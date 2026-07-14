@@ -119,7 +119,3 @@ def load_config(path: Path | None) -> AppConfig:
         return AppConfig()
     raw: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return AppConfig.model_validate(raw)
-
-cloud:
-     repo_id: "iboRotti/avsr-tr-dataset"
-     private: true
