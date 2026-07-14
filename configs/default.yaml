@@ -1,0 +1,108 @@
+workspace: data
+language: tr
+
+download:
+  format: "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
+  cookies_from_browser: null
+  playlist_end: null
+  subtitle_languages: ["tr", "tr-TR"]
+  use_automatic_youtube_captions: true
+  remote_components: ["ejs:github"]
+  js_runtime: "deno"
+  retries: 10
+  fragment_retries: 10
+  socket_timeout: 30
+
+normalization:
+  fps: 25
+  audio_sample_rate: 16000
+  max_height: 1080
+
+transcription:
+  model: medium
+  device: auto
+  compute_type: auto
+  beam_size: 5
+  vad_filter: true
+  min_silence_duration_ms: 500
+  min_word_probability: 0.55
+  min_segment_probability: 0.72
+  max_no_speech_probability: 0.45
+  use_whisper_when_no_manual_subtitles: true
+
+segmentation:
+  min_duration: 2.0
+  max_duration: 16.0
+  pad_seconds: 0.12
+  max_gap_seconds: 0.65
+  min_words: 2
+
+active_speaker:
+  enabled: true
+  backend: "av_sync"
+  min_score: 0.18
+  min_track_coverage: 0.80
+  face_detection_confidence: 0.55
+  max_faces: 6
+  track_iou_threshold: 0.25
+  sample_every_n_frames: 5
+  analysis_width: 480
+  skip_when_single_face: true
+  single_face_probe_frames: 40
+
+talknet:
+  repo_dir: external/TalkNet-ASD
+  python_executable: external/talknet-venv/bin/python
+  min_speaking_probability: 0.60
+  accept_min_speaking_ratio: 0.65
+  review_min_speaking_ratio: 0.40
+  keep_workdirs: false
+
+auto_avsr:
+  repo_dir: external/auto_avsr
+  detector: retinaface
+  device: auto
+  output_size: 96
+  strict: true
+
+visual_quality:
+  enabled: true
+  sample_every_n_frames: 1
+
+  # Conservative thresholds: uncertain clips go to review instead of deletion.
+  accept_min_mouth_visible_ratio: 0.88
+  review_min_mouth_visible_ratio: 0.68
+
+  accept_max_scene_cut_ratio: 0.015
+  review_max_scene_cut_ratio: 0.050
+
+  # Audio-active frames with almost no mouth motion.
+  accept_max_static_speech_ratio: 0.18
+  review_max_static_speech_ratio: 0.42
+
+  # Longest continuous missing-mouth period.
+  accept_max_missing_run_seconds: 0.35
+  review_max_missing_run_seconds: 1.00
+
+  # Geometry jumps can indicate cup/hand occlusion or failed landmarks.
+  accept_max_unstable_landmark_ratio: 0.12
+  review_max_unstable_landmark_ratio: 0.35
+
+  scene_cut_hist_threshold: 0.58
+  mouth_motion_floor: 0.018
+  audio_activity_quantile: 0.55
+  landmark_jump_threshold: 0.18
+  min_face_detection_confidence: 0.50
+  min_tracking_confidence: 0.50
+
+quality:
+  min_asr_confidence: 0.72
+  min_active_speaker_score: 0.18
+  min_face_coverage: 0.80
+  min_sharpness: 18.0
+
+cloud:
+  # Ortak (private) Hugging Face dataset repo'su. Herkes AYNI değeri kullanmalı.
+  # Örn: "takim-adi/avsr-tr-dataset"
+  repo_id: null
+  private: true

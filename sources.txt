@@ -1,0 +1,10 @@
+# Her satıra bir YouTube video veya playlist linki yaz.
+# Boş satırlar ve # ile başlayan satırlar yok sayılır.
+#
+# Otomatik algılama:
+# https://www.youtube.com/watch?v=VIDEO_ID
+# https://www.youtube.com/playlist?list=PLAYLIST_ID
+#
+# İstersen türü açıkça belirtebilirsin:
+# video https://www.youtube.com/watch?v=VIDEO_ID
+# playlist https://www.youtube.com/playlist?list=PLAYLIST_ID

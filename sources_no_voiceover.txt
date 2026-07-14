@@ -1,0 +1,2 @@
+# Konuşan kişi ekranda; dış ses beklenmiyor.
+# Her satıra bir YouTube video veya playlist URL'si yaz.

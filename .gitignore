@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+data/
+data_cloud/
+external/
+.DS_Store
+
+# secrets / tokens — NEVER commit these
+.env
+*.token
+hf_token*
