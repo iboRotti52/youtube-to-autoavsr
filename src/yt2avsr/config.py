@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 
 class DownloadConfig(BaseModel):
     format: str = "bv*[height>=720]+ba/b[height>=720]/best"
-    cookies_from_browser: str | None = None
     playlist_end: int | None = None
     subtitle_languages: list[str] = ["tr", "tr-TR"]
     use_automatic_youtube_captions: bool = True
@@ -22,7 +21,7 @@ class NormalizationConfig(BaseModel):
     max_height: int = 1080
 
 class TranscriptionConfig(BaseModel):
-    model: str = "medium"
+    model: str = "large-v3-turbo"
     device: str = "auto"
     compute_type: str = "auto"
     beam_size: int = 5
@@ -41,7 +40,9 @@ class SegmentationConfig(BaseModel):
     min_words: int = 2
 
 class ActiveSpeakerConfig(BaseModel):
-    enabled: bool = True
+    # Disabled by default: we assume single-speaker (talking-head) videos and let
+    # the Auto-AVSR cropper pick the face. No multi-face "who is speaking" logic.
+    enabled: bool = False
     backend: str = "av_sync"
     min_score: float = 0.18
     min_track_coverage: float = 0.80
@@ -108,7 +109,6 @@ class AppConfig(BaseModel):
     transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
     segmentation: SegmentationConfig = Field(default_factory=SegmentationConfig)
     active_speaker: ActiveSpeakerConfig = Field(default_factory=ActiveSpeakerConfig)
-    talknet: TalkNetConfig = Field(default_factory=TalkNetConfig)
     auto_avsr: AutoAVSRConfig = Field(default_factory=AutoAVSRConfig)
     visual_quality: VisualQualityConfig = Field(default_factory=VisualQualityConfig)
     quality: QualityConfig = Field(default_factory=QualityConfig)

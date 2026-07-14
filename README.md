@@ -7,7 +7,7 @@ Bu sürüm üç önemli değişiklik getirir:
 2. Birden fazla yüz varsa yüzler takip edilir ve sesle eşzamanlı ağız hareketi en yüksek
    olan track aktif konuşmacı olarak seçilir.
 3. Creator tarafından yüklenmiş Türkçe altyazı varsa o kullanılır; yoksa
-   `faster-whisper large-v3` çalışır. Düşük güvenli Whisper segmentleri reddedilir.
+   `faster-whisper large-v3-turbo` çalışır. Düşük güvenli Whisper segmentleri reddedilir.
 
 ## Kurulum
 
@@ -39,7 +39,7 @@ yt2avsr process-playlist "PLAYLIST_URL" --config configs/default.yaml
 ```text
 creator tarafından yüklenmiş tr/tr-TR altyazı
     ↓ yoksa
-Whisper large-v3 + word timestamps + VAD
+Whisper large-v3-turbo + word timestamps + VAD
     ↓
 segment confidence filtresi
 ```
@@ -48,28 +48,21 @@ YouTube'un otomatik caption'ı varsayılan olarak kullanılmaz. Çünkü o da ot
 ASR etiketidir ve model/sürüm/kalite kontrolü bizim elimizde değildir. İstenirse config
 üzerinden daha sonra ayrı bir fallback olarak eklenebilir.
 
-## Aktif konuşmacı
+## Aktif konuşmacı (kaldırıldı)
 
-v0.2'nin `av_sync` backend'i:
-
-```text
-çoklu yüz tespiti
-→ IoU ile yüz track'leri
-→ her track'in alt-yüz/ağız hareket enerjisi
-→ sesli segmentte en fazla ve en sürekli hareket eden yüz
-→ sadece seçilen track'i resmî Auto-AVSR cropper'a gönderme
-```
-
-Bu, basit “en büyük yüzü seç” yaklaşımından daha doğrudur. Ancak TalkNet kadar güçlü
-bir öğrenilmiş ASD modeli değildir. Haber videoları, panel ve röportajlar için manifestteki
-`active_speaker_score` ve örnek crop'lar manuel denetlenmelidir.
+Eski sürümlerdeki `av_sync` çoklu yüz takibi ve TalkNet tabanlı "hangi yüz
+konuşuyor" seçimi **kaldırılmıştır**. Pipeline artık tek konuşmacılı
+(talking-head) video varsayar; yüz seçimini doğrudan resmî Auto-AVSR cropper yapar.
+Dış ses/dublaj ise `voiceover` profilinde dudak-ses (lip-sync) kontrolüyle elenir
+(bkz. "Profiller: iki source, tek fark"). Röportaj/panel gibi çok konuşmacılı
+videolar bu repo için uygun değildir.
 
 ## Whisper doğruluğu
 
 Whisper için tek bir evrensel “doğruluk oranı” garanti edilemez; Türkçe WER, mikrofon,
 aksan, arka plan müziği ve konuya göre değişir. Bu repo doğruluğu şu şekilde korur:
 
-- `large-v3`
+- `large-v3-turbo` (gürültülü/ağır aksanlı içerik için `large-v3`)
 - dil zorlaması: `tr`
 - VAD
 - temperature 0
@@ -87,7 +80,6 @@ manuel örnekleme önerilir.
 ```text
 data/clips/<video>/<segment>/
 ├── source.mp4
-├── active_speaker.mp4
 ├── mouth.mp4
 ├── audio.wav
 ├── transcript.txt
@@ -172,7 +164,6 @@ yt-dlp Python API'sine otomatik olarak şunları verir:
 ```text
 remote_components = {"ejs:github"}
 js_runtimes = {"deno": {}}
-cookies_from_browser = safari
 ```
 
 Ayrıca format seçimi otomatik olarak üç kez denenir:
@@ -208,7 +199,7 @@ Transcript sırası artık:
 ```text
 1. creator tarafından yüklenmiş Türkçe altyazı
 2. YouTube otomatik Türkçe altyazısı
-3. ikisi de yoksa faster-whisper medium
+3. ikisi de yoksa faster-whisper large-v3-turbo
 ```
 
 Bu nedenle altyazısı bulunan videolarda Whisper hiç yüklenmez ve transkripsiyon süresi
@@ -239,32 +230,39 @@ yt2avsr process-sources sources.txt --config configs/default.yaml
 ```
 
 
-## v0.7-fixed: profiller arasındaki tek fark
+## Profiller: iki source, tek fark
 
-Her iki listede de AYNI işlemler uygulanır:
+Sadece iki kaynak listesi vardır ve aralarındaki **tek fark videoda dış ses
+(voice-over) olup olmamasıdır**. Her iki listede de AYNI işlemler uygulanır:
 
-- YouTube/manual/automatic subtitle fallback
-- Whisper medium fallback
+- YouTube manuel/otomatik altyazı fallback + Whisper large-v3-turbo fallback
 - segmentasyon
-- yüz ve aktif yüz takibi
-- ağız landmark görünürlüğü
+- ağız landmark görünürlüğü (dudak görünümü kontrolü)
 - scene-cut kontrolü
 - uzun süreli ağız kaybı
-- ses varken statik dudak kontrolü
 - occlusion/landmark kararsızlığı
 - resmî Auto-AVSR crop
 - accepted/review/rejected ayrımı
 
+Çoklu yüz / "ekranda hangi kişi konuşuyor" mantığı (TalkNet ve av_sync aktif
+konuşmacı) **kaldırılmıştır**. Tek konuşmacılı (talking-head) video varsayılır;
+yüz seçimini resmî Auto-AVSR cropper yapar.
+
 Tek fark:
 
 ```text
-sources_no_voiceover.txt
-→ TalkNet çalışmaz
+sources_no_voiceover.txt  (dış sessiz)
+→ ses, ekrandaki konuşmacıya ait kabul edilir
+→ dudak-ses (lip-sync) kontrolü gevşetilir; doğal duraklamalar segmenti düşürmez
 
-sources_voiceover.txt
-→ TalkNet zorunlu çalışır
-→ ekranda sesle eşleşen konuşmacı yoksa dış ses olarak reddedilir
+sources_voiceover.txt     (dış sesli)
+→ dış ses / dublaj olabilir
+→ dudak-ses kontrolü sıkı uygulanır: ses varken ağız kıpırdamıyorsa
+  segment "external_voice_or_dubbing" nedeniyle reddedilir
 ```
+
+Bu kontrol `visual_quality`'nin `static_speech_ratio` sinyalidir (ses aktifken
+ağzın hareket etmediği kare oranı) — ayrı bir model gerekmez.
 
 Çalıştırma:
 

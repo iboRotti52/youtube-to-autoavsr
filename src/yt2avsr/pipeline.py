@@ -14,7 +14,6 @@ from .transcribe import transcribe
 from .utils import read_json, write_json
 from .visual_quality import analyze_visual_quality
 from .profiles import get_profile
-from .talknet_backend import run_talknet
 
 class Pipeline:
     def __init__(self, cfg: AppConfig, *, force: bool = False, profile: str = "no_voiceover") -> None:
@@ -149,24 +148,19 @@ class Pipeline:
                 crop_input = source_clip
                 as_score, coverage = 1.0, 1.0
 
+            # Both profiles run the same mouth-visibility / scene / occlusion checks.
+            # The ONLY profile difference: voiceover verifies lip-sync (rejects
+            # segments whose audio doesn't match the visible mouth = external voice),
+            # no_voiceover relaxes that check.
             visual = (
-                analyze_visual_quality(crop_input, audio_clip, self.cfg.visual_quality)
+                analyze_visual_quality(
+                    crop_input, audio_clip, self.cfg.visual_quality,
+                    verify_lip_sync=self.profile.verify_lip_sync,
+                )
                 if self.cfg.visual_quality.enabled else None
             )
 
-            # This is the ONLY profile difference:
-            # voiceover -> TalkNet required
-            # no_voiceover -> TalkNet skipped
-            talknet = (
-                run_talknet(source_clip, self.cfg.talknet)
-                if self.profile.require_talknet else None
-            )
-
-            # Both profiles use the same mouth visibility / scene / occlusion checks.
-            if (
-                (visual is not None and visual.status == "rejected")
-                or (talknet is not None and talknet.status == "rejected")
-            ):
+            if visual is not None and visual.status == "rejected":
                 crop_sharpness = 0.0
                 mouth_path_value = ""
             else:
@@ -184,16 +178,14 @@ class Pipeline:
             )
 
             visual_status = visual.status if visual is not None else "accepted"
-            talknet_status = talknet.status if talknet is not None else "accepted"
 
             if (
                 not base_ok
                 or visual_status == "rejected"
-                or talknet_status == "rejected"
                 or crop_sharpness < self.cfg.quality.min_sharpness
             ):
                 quality_status = "rejected"
-            elif visual_status == "review" or talknet_status == "review":
+            elif visual_status == "review":
                 quality_status = "review"
             else:
                 quality_status = "accepted"
@@ -215,17 +207,9 @@ class Pipeline:
                 "face_coverage": coverage,
                 "sharpness": crop_sharpness,
                 "source_profile": self.profile.name,
-"quality_status": quality_status,
+                "quality_status": quality_status,
                 "accepted": accepted,
                 "visual_quality": visual.to_dict() if visual is not None else None,
-"talknet": ({
-    "status": talknet.status,
-    "speaking_ratio": talknet.speaking_ratio,
-    "mean_probability": talknet.mean_probability,
-    "max_probability": talknet.max_probability,
-    "reason": talknet.reason,
-} if talknet is not None else None),
-
             })
         self._stage(key, "clip_v2", build)
 

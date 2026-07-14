@@ -1,5 +1,5 @@
 from __future__ import annotations
-import csv, subprocess, shutil
+import csv, subprocess
 from pathlib import Path
 from typing import Annotated
 import typer
@@ -89,39 +89,6 @@ def process_both_sources(
     )
     typer.echo(f"Done: {cfg.workspace / 'manifests'}")
 
-
-@app.command("setup-talknet")
-def setup_talknet(
-    config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
-):
-    cfg = load_config(config)
-    repo = cfg.talknet.repo_dir
-    venv_dir = cfg.talknet.python_executable.parent.parent
-
-    repo.parent.mkdir(parents=True, exist_ok=True)
-    if not repo.exists():
-        subprocess.run(
-            ["git", "clone", "--depth", "1",
-             "https://github.com/TaoRuijie/TalkNet-ASD.git", str(repo)],
-            check=True,
-        )
-
-    chosen = next(
-        (name for name in ("python3.10", "python3.11", "python3.9")
-         if shutil.which(name)),
-        None,
-    )
-    if chosen is None:
-        raise RuntimeError("Python 3.9-3.11 required for TalkNet")
-
-    subprocess.run([chosen, "-m", "venv", str(venv_dir)], check=True)
-    python = venv_dir / "bin" / "python"
-    subprocess.run([str(python), "-m", "pip", "install", "-U", "pip"], check=True)
-    subprocess.run(
-        [str(python), "-m", "pip", "install", "-r", str(repo / "requirement.txt")],
-        check=True,
-    )
-    typer.echo(f"TalkNet ready: {repo}")
 
 @app.command("setup-external")
 def setup_external(config:Annotated[Path|None,typer.Option("--config","-c")]=None):

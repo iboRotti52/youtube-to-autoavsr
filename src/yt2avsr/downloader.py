@@ -42,8 +42,6 @@ def _ydl_options(
             {"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"},
         ],
     }
-    if cfg.cookies_from_browser:
-        opts["cookiesfrombrowser"] = (cfg.cookies_from_browser,)
     if playlist and cfg.playlist_end:
         opts["playlistend"] = cfg.playlist_end
     return opts

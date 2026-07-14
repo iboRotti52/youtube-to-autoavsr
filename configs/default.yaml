@@ -3,7 +3,6 @@ language: tr
 
 download:
   format: "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
-  cookies_from_browser: null
   playlist_end: null
   subtitle_languages: ["tr", "tr-TR"]
   use_automatic_youtube_captions: true
@@ -19,7 +18,10 @@ normalization:
   max_height: 1080
 
 transcription:
-  model: medium
+  # Transcript'ler eğitim etiketidir; doğruluk hızdan önemli. large-v3-turbo,
+  # large-v3 doğruluğunun ~%95+'ini korur ama çok daha hızlıdır (medium'u hem
+  # doğrulukta hem hızda geçer). Çok gürültülü/ağır aksanlı içerik için "large-v3".
+  model: large-v3-turbo
   device: auto
   compute_type: auto
   beam_size: 5
@@ -37,26 +39,10 @@ segmentation:
   max_gap_seconds: 0.65
   min_words: 2
 
+# Tek konuşmacılı (talking-head) videolar varsayılır; çoklu yüz / "hangi yüz
+# konuşuyor" mantığı kapalıdır. Yüz seçimini Auto-AVSR cropper yapar.
 active_speaker:
-  enabled: true
-  backend: "av_sync"
-  min_score: 0.18
-  min_track_coverage: 0.80
-  face_detection_confidence: 0.55
-  max_faces: 6
-  track_iou_threshold: 0.25
-  sample_every_n_frames: 5
-  analysis_width: 480
-  skip_when_single_face: true
-  single_face_probe_frames: 40
-
-talknet:
-  repo_dir: external/TalkNet-ASD
-  python_executable: external/talknet-venv/bin/python
-  min_speaking_probability: 0.60
-  accept_min_speaking_ratio: 0.65
-  review_min_speaking_ratio: 0.40
-  keep_workdirs: false
+  enabled: false
 
 auto_avsr:
   repo_dir: external/auto_avsr

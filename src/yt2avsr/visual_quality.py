@@ -82,6 +82,7 @@ def analyze_visual_quality(
     video_path: Path,
     audio_path: Path,
     cfg: VisualQualityConfig,
+    verify_lip_sync: bool = True,
 ) -> VisualQualityResult:
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
@@ -217,20 +218,26 @@ def analyze_visual_quality(
     max_missing_run_seconds = _longest_false_run(visible_array.tolist()) / fps
     unstable_landmark_ratio = float(np.mean(unstable[visible_array])) if np.any(visible_array) else 1.0
 
+    # Lip/mouth visibility, scene-cut and occlusion checks run in BOTH profiles.
     accept_checks = [
         mouth_visible_ratio >= cfg.accept_min_mouth_visible_ratio,
         scene_cut_ratio <= cfg.accept_max_scene_cut_ratio,
-        static_speech_ratio <= cfg.accept_max_static_speech_ratio,
         max_missing_run_seconds <= cfg.accept_max_missing_run_seconds,
         unstable_landmark_ratio <= cfg.accept_max_unstable_landmark_ratio,
     ]
     review_checks = [
         mouth_visible_ratio >= cfg.review_min_mouth_visible_ratio,
         scene_cut_ratio <= cfg.review_max_scene_cut_ratio,
-        static_speech_ratio <= cfg.review_max_static_speech_ratio,
         max_missing_run_seconds <= cfg.review_max_missing_run_seconds,
         unstable_landmark_ratio <= cfg.review_max_unstable_landmark_ratio,
     ]
+
+    # Lip-sync (audio active but mouth static) only matters for voiceover sources,
+    # where it flags external narration. Skipped for no_voiceover so natural pauses
+    # don't drop otherwise-good segments.
+    if verify_lip_sync:
+        accept_checks.append(static_speech_ratio <= cfg.accept_max_static_speech_ratio)
+        review_checks.append(static_speech_ratio <= cfg.review_max_static_speech_ratio)
 
     status = "accepted" if all(accept_checks) else "review" if all(review_checks) else "rejected"
     reasons: list[str] = []
@@ -239,8 +246,8 @@ def analyze_visual_quality(
         reasons.append("mouth_not_visible_enough")
     if scene_cut_ratio > cfg.accept_max_scene_cut_ratio:
         reasons.append("scene_changes")
-    if static_speech_ratio > cfg.accept_max_static_speech_ratio:
-        reasons.append("speech_without_enough_mouth_motion")
+    if verify_lip_sync and static_speech_ratio > cfg.accept_max_static_speech_ratio:
+        reasons.append("external_voice_or_dubbing")
     if max_missing_run_seconds > cfg.accept_max_missing_run_seconds:
         reasons.append("long_mouth_missing_interval")
     if unstable_landmark_ratio > cfg.accept_max_unstable_landmark_ratio:
