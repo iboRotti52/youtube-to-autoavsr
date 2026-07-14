@@ -1,11 +1,13 @@
-# YouTube → Auto-AVSR Dataset Builder v0.2
+# YouTube → Auto-AVSR Dataset Builder v0.7
 
-Bu sürüm üç önemli değişiklik getirir:
+Bu araç, izin verilen YouTube videolarından Auto-AVSR tarzı dudak-okuma eğitim
+verisi üretir. Öne çıkan noktalar:
 
 1. **Resmî Auto-AVSR preprocessing** kullanılır: yüz tespiti → landmark → mean-face
    hizalama → 96×96 ağız ROI.
-2. Birden fazla yüz varsa yüzler takip edilir ve sesle eşzamanlı ağız hareketi en yüksek
-   olan track aktif konuşmacı olarak seçilir.
+2. **Tek konuşmacı (talking-head) varsayılır.** Çoklu yüz takibi / aktif konuşmacı
+   seçimi yoktur; ekrandaki yüzü resmî Auto-AVSR cropper seçer. Dış ses/dublaj,
+   `voiceover` profilinde dudak-ses (lip-sync) kontrolüyle elenir.
 3. Creator tarafından yüklenmiş Türkçe altyazı varsa o kullanılır; yoksa
    `faster-whisper large-v3-turbo` çalışır. Düşük güvenli Whisper segmentleri reddedilir.
 
@@ -213,15 +215,13 @@ whisper
 
 Görsel işlem hızlandırmaları:
 
-- 40 seyrek karede yalnızca tek yüz görülürse aktif konuşmacı seçimi tamamen atlanır.
-- Çok yüzlü videolarda ASD her kare yerine varsayılan olarak her 5 karede bir, 480 px
-  analiz çözünürlüğünde çalışır.
 - Resmî Auto-AVSR landmark detector ve crop processor her segment için tekrar
   oluşturulmaz; bir kez belleğe yüklenir ve klipler arasında yeniden kullanılır.
 - Kesin reddedilecek görsel kliplerde resmî Auto-AVSR crop çalıştırılmaz.
 
-Talking-head videolarında en büyük kazanç tek-yüz bypass'ından gelir. Röportaj/panel
-videolarında ASD devam eder fakat seyrek ve düşük çözünürlüklü analiz nedeniyle daha hızlıdır.
+> Not: v0.7'de çoklu yüz aktif konuşmacı seçimi (ASD / av_sync / TalkNet) tamamen
+> kaldırıldı. Bu nedenle eski sürümlerdeki "tek-yüz bypass" ve "her 5 karede bir ASD"
+> davranışları artık geçerli değildir; pipeline tek konuşmacı varsayar.
 
 Çalıştırma:
 
@@ -299,6 +299,12 @@ Kendi verini yükle (varsayılan olarak yalnızca `accepted` + `review` klipleri
 yt2avsr push-data --config configs/default.yaml
 ```
 
+Buluta yalnızca görsel dudak-okuma (VSR) için gerekenler gider: `mouth.mp4`,
+`transcript.txt`, `metadata.json`. Ham `source.mp4` (büyük, sadece hata ayıklama)
+ve `audio.wav` **yüklenmez**. Sesli-görüntülü (AV) model için sesi de istersen
+`--include-audio`, ham klibi de istersen `--include-source` ekle. HF ücretsiz
+hesapta private depolama 100 GB'dır.
+
 Eğitim makinesinde herkesin verisini tek seferde indir:
 
 ```bash
@@ -311,7 +317,7 @@ yt2avsr pull-data --config configs/default.yaml --dest data_cloud
 data_cloud/
 └── data/
     ├── ibrahim/
-    │   ├── clips/<video>/<segment>/{mouth.mp4,audio.wav,transcript.txt,metadata.json}
+    │   ├── clips/<video>/<segment>/{mouth.mp4,transcript.txt,metadata.json}
     │   └── manifests/{all.csv,accepted.csv,...}
     ├── arkadas2/
     └── arkadas3/

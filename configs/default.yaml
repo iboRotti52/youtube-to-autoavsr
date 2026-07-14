@@ -89,6 +89,5 @@ quality:
 
 cloud:
   # Ortak (private) Hugging Face dataset repo'su. Herkes AYNI değeri kullanmalı.
-  # Örn: "takim-adi/avsr-tr-dataset"
-  repo_id: null
+  repo_id: "iboRotti/avsr-tr-dataset"
   private: true

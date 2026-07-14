@@ -107,6 +107,8 @@ def push_data(
     repo: Annotated[str | None, typer.Option("--repo", help="HF dataset repo id, overrides config")] = None,
     contributor: Annotated[str | None, typer.Option("--contributor", help="Your sub-folder name (default: HF username)")] = None,
     include: Annotated[str, typer.Option("--include", help="Comma list: accepted,review,rejected")] = "accepted,review",
+    include_source: Annotated[bool, typer.Option("--include-source", help="Also upload the large raw source.mp4 (default: skip)")] = False,
+    include_audio: Annotated[bool, typer.Option("--include-audio", help="Also upload audio.wav (needed only for the audio-visual model)")] = False,
     token: Annotated[str | None, typer.Option("--token", help="HF token (else HF_TOKEN env or cached login)")] = None,
 ):
     """Upload your processed clips to the shared private Hugging Face dataset."""
@@ -118,7 +120,8 @@ def push_data(
         raise typer.BadParameter("Set cloud.repo_id in the config or pass --repo")
     statuses = [s.strip() for s in include.split(",") if s.strip()]
     result = push(cfg.workspace, repo_id, contributor=contributor,
-                  statuses=statuses, token=token, private=cfg.cloud.private)
+                  statuses=statuses, token=token, private=cfg.cloud.private,
+                  include_source=include_source, include_audio=include_audio)
     typer.echo(f"Pushed: {result}")
 
 

@@ -75,8 +75,15 @@ def push(
     statuses: Iterable[str] = ("accepted", "review"),
     token: str | None = None,
     private: bool = True,
+    include_source: bool = False,
+    include_audio: bool = False,
 ) -> str:
     """Upload selected local clips + manifests to the shared HF dataset repo.
+
+    Uploads only what visual lip-reading (VSR) needs: mouth.mp4, transcript.txt,
+    metadata.json. The large raw ``source.mp4`` and the ``audio.wav`` track are
+    skipped by default. Pass ``include_source=True`` and/or ``include_audio=True``
+    to add them (audio is needed only if you train the audio-visual model).
 
     Returns the path-in-repo that was written to.
     """
@@ -106,6 +113,14 @@ def push(
         rel = d.relative_to(workspace).as_posix()  # clips/<item>/<segment>
         allow_patterns.append(f"{rel}/**")
 
+    # Skip files VSR training doesn't need. active_speaker.mp4 is never produced in
+    # v0.7; source.mp4 is large debug-only; audio.wav is only for the AV model.
+    ignore_patterns = ["**/active_speaker.mp4"]
+    if not include_source:
+        ignore_patterns.append("**/source.mp4")
+    if not include_audio:
+        ignore_patterns.append("**/audio.wav")
+
     api = HfApi(token=token)
     api.create_repo(repo_id, repo_type="dataset", private=private, exist_ok=True)
 
@@ -116,6 +131,7 @@ def push(
         repo_id=repo_id,
         repo_type="dataset",
         allow_patterns=allow_patterns,
+        ignore_patterns=ignore_patterns,
         commit_message=f"Add {len(clip_dirs)} clips from {contributor} ({','.join(statuses)})",
     )
     return f"{repo_id}:{path_in_repo} ({len(clip_dirs)} clips)"
