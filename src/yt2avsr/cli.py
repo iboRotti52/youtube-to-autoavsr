@@ -75,19 +75,41 @@ def check_downloader(
     )
 
 
+def _has_usable_sources(path: Path) -> bool:
+    """True if the file exists and has at least one non-comment, non-blank line."""
+    if not path.exists():
+        return False
+    return any(
+        line.strip() and not line.strip().startswith("#")
+        for line in path.read_text(encoding="utf-8").splitlines()
+    )
+
+
 @app.command("process-both-sources")
 def process_both_sources(
     config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
     force: Annotated[bool, typer.Option(help="Re-run completed stages")] = False,
 ):
     cfg = load_config(config)
-    Pipeline(cfg, force=force, profile="no_voiceover").process_sources_file(
-        Path("sources_no_voiceover.txt")
-    )
-    Pipeline(cfg, force=force, profile="voiceover").process_sources_file(
-        Path("sources_voiceover.txt")
-    )
-    typer.echo(f"Done: {cfg.workspace / 'manifests'}")
+    jobs = [
+        ("no_voiceover", Path("sources_no_voiceover.txt")),
+        ("voiceover", Path("sources_voiceover.txt")),
+    ]
+
+    ran = []
+    for profile, path in jobs:
+        if not _has_usable_sources(path):
+            typer.echo(f"Skipping {path.name}: no usable links, moving on.")
+            continue
+        Pipeline(cfg, force=force, profile=profile).process_sources_file(path)
+        ran.append(path.name)
+
+    if not ran:
+        raise typer.BadParameter(
+            "Neither sources_no_voiceover.txt nor sources_voiceover.txt has any "
+            "usable links. Add at least one YouTube URL (one per line, no '#')."
+        )
+    typer.echo(f"Done ({', '.join(ran)}): {cfg.workspace / 'manifests'}")
 
 
 @app.command("setup-external")

@@ -278,20 +278,40 @@ dataset repo'sunda durur. Her ekip üyesi kendi videolarını lokalde işler, so
 verisini buluta gönderir. Herkesin verisi `data/<kullanıcı>/...` altına yazıldığı
 için kimse birbirinin klibinin üstüne yazmaz.
 
-Bir kereye mahsus giriş:
+### Veri seti
 
-```bash
-huggingface-cli login        # HF token'ını yapıştır (Settings → Access Tokens)
+Ortak (private) veri seti reposu:
+
+```text
+https://huggingface.co/datasets/iboRotti/avsr-tr-dataset
 ```
 
-`configs/default.yaml` içindeki `cloud.repo_id` alanını ortak repoya ayarla
-(herkes AYNI değeri kullanır):
+Bu değer `configs/default.yaml` içinde ayarlıdır ve herkes AYNI değeri kullanır:
 
 ```yaml
 cloud:
-  repo_id: "takim-adi/avsr-tr-dataset"
+  repo_id: "iboRotti/avsr-tr-dataset"
   private: true
 ```
+
+Repoya erişim: sahibi (iboRotti) her ekip üyesini HF'de
+dataset → **Settings → Collaborators**'tan **write** yetkisiyle davet eder.
+
+### Token (kimlik doğrulama)
+
+Yüklemek/indirmek için her üye kendi HF **token**'ı ile bir kez giriş yapar:
+
+1. HF → **Settings → Access Tokens → New token** → tür **Write** → oluştur.
+2. Terminal'de:
+
+   ```bash
+   huggingface-cli login        # token'ı buraya yapıştır
+   ```
+
+> ⚠️ **Token'ı asla bu repoya, koda veya herhangi bir dosyaya yazma.** Token
+> şifre gibidir; sadece `huggingface-cli login` ile kendi makinende saklanır.
+> `.gitignore` `.env` / `*.token` dosyalarını zaten dışlar. Yanlışlıkla bir yere
+> yapıştırdıysan HF Settings'ten hemen **Revoke** edip yenisini oluştur.
 
 Kendi verini yükle (varsayılan olarak yalnızca `accepted` + `review` klipleri):
 
