@@ -1,5 +1,5 @@
 from __future__ import annotations
-import csv, subprocess
+import csv, subprocess, sys, shutil
 from pathlib import Path
 from typing import Annotated
 import typer
@@ -122,6 +122,46 @@ def setup_external(config:Annotated[Path|None,typer.Option("--config","-c")]=Non
     subprocess.run(["python","-m","pip","install","-r",
                     str(repo/"preparation"/"requirements.txt")],check=True)
     typer.echo(f"Official Auto-AVSR installed at {repo}")
+
+
+@app.command("setup-retinaface")
+def setup_retinaface(
+    config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+):
+    """Install the official RetinaFace tracker (torch + ibug) used by Auto-AVSR.
+
+    Mirrors external/auto_avsr/preparation/tools: installs torch, then the
+    ibug.face_detection and ibug.face_alignment packages (pretrained weights come
+    via Git LFS). Run once after `setup-external`.
+    """
+    cfg = load_config(config)
+    ext = cfg.auto_avsr.repo_dir.parent
+    ext.mkdir(parents=True, exist_ok=True)
+
+    if shutil.which("git-lfs") is None and shutil.which("git") is not None:
+        # git-lfs plugin is invoked as `git lfs`; a missing `git-lfs` binary means
+        # the LFS weights won't download.
+        raise RuntimeError(
+            "Git LFS gerekli (ibug ağırlıkları için). Kur: "
+            "brew install git-lfs && git lfs install"
+        )
+
+    subprocess.run([sys.executable, "-m", "pip", "install",
+                    "torch", "torchvision"], check=True)
+
+    repos = [
+        ("face_detection", "https://github.com/hhj1897/face_detection.git"),
+        ("face_alignment", "https://github.com/hhj1897/face_alignment.git"),
+    ]
+    for name, url in repos:
+        target = ext / name
+        if not target.exists():
+            subprocess.run(["git", "clone", url, str(target)], check=True)
+        subprocess.run(["git", "lfs", "pull"], cwd=str(target), check=True)
+        subprocess.run([sys.executable, "-m", "pip", "install", "-e", str(target)],
+                       check=True)
+
+    typer.echo("RetinaFace (ibug.face_detection + ibug.face_alignment) hazır.")
 
 @app.command("push-data")
 def push_data(

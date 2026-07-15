@@ -14,15 +14,22 @@ verisi üretir. Öne çıkan noktalar:
 ## Kurulum
 
 ```bash
-brew install ffmpeg git
+brew install ffmpeg git git-lfs
+git lfs install
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 yt2avsr setup-external --config configs/default.yaml
+yt2avsr setup-retinaface --config configs/default.yaml
 ```
 
 `setup-external`, resmî `mpc001/auto_avsr` reposunu `external/auto_avsr` altına klonlar
 ve preprocessing bağımlılıklarını kurar.
+
+`setup-retinaface`, resmî Auto-AVSR'ın kullandığı RetinaFace yüz tespit/hizalama
+paketlerini kurar: `torch` + `ibug.face_detection` + `ibug.face_alignment`
+(önceden eğitilmiş ağırlıklar Git LFS ile iner, bu yüzden `git-lfs` şarttır).
+Bu adım olmadan `detector: retinaface` ile crop çalışmaz (`No module named 'ibug'`).
 
 ## Çalıştırma
 

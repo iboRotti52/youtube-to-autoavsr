@@ -46,6 +46,7 @@ active_speaker:
 
 auto_avsr:
   repo_dir: external/auto_avsr
+  # Resmî Auto-AVSR ile birebir aynı: RetinaFace. Kurulum için: yt2avsr setup-retinaface
   detector: retinaface
   device: auto
   output_size: 96
