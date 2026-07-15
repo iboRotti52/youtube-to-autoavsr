@@ -7,6 +7,7 @@ FIELDS = [
  "text","start","end","duration","source_url","title","channel","transcript_source",
  "asr_confidence","active_speaker_score","face_coverage","sharpness",
  "source_profile","quality_status","talknet_status","talknet_speaking_ratio","talknet_reason","mouth_visible_ratio","scene_cut_ratio","static_speech_ratio",
+ "speech_mouth_motion_ratio","lip_sync_correlation","mouth_opening_correlation",
  "max_missing_run_seconds","unstable_landmark_ratio","visual_quality_reasons","accepted"
 ]
 
@@ -20,6 +21,9 @@ def _flatten(record):
     row["mouth_visible_ratio"] = visual.get("mouth_visible_ratio")
     row["scene_cut_ratio"] = visual.get("scene_cut_ratio")
     row["static_speech_ratio"] = visual.get("static_speech_ratio")
+    row["speech_mouth_motion_ratio"] = visual.get("speech_mouth_motion_ratio")
+    row["lip_sync_correlation"] = visual.get("lip_sync_correlation")
+    row["mouth_opening_correlation"] = visual.get("mouth_opening_correlation")
     row["max_missing_run_seconds"] = visual.get("max_missing_run_seconds")
     row["unstable_landmark_ratio"] = visual.get("unstable_landmark_ratio")
     row["visual_quality_reasons"] = "|".join(visual.get("reasons") or [])

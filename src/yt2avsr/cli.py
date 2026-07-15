@@ -11,19 +11,22 @@ app=typer.Typer(no_args_is_help=True,help="Prepare permitted videos for Auto-AVS
 
 @app.command()
 def process(url:Annotated[str,typer.Argument()],config:Annotated[Path|None,typer.Option("--config","-c")]=None,
-            force:Annotated[bool,typer.Option()]=False):
-    cfg=load_config(config); Pipeline(cfg,force=force).process_url(url)
+            force:Annotated[bool,typer.Option()]=False,
+            profile: Annotated[str, typer.Option("--profile", help="no_voiceover or voiceover")] = "no_voiceover"):
+    cfg=load_config(config); Pipeline(cfg,force=force,profile=profile).process_url(url)
     typer.echo(f"Done: {cfg.workspace/'manifests'/'accepted.csv'}")
 
 @app.command("process-playlist")
 def playlist(url:Annotated[str,typer.Argument()],config:Annotated[Path|None,typer.Option("--config","-c")]=None,
-             force:Annotated[bool,typer.Option()]=False):
-    cfg=load_config(config); Pipeline(cfg,force=force).process_url(url,playlist=True)
+             force:Annotated[bool,typer.Option()]=False,
+             profile: Annotated[str, typer.Option("--profile", help="no_voiceover or voiceover")] = "no_voiceover"):
+    cfg=load_config(config); Pipeline(cfg,force=force,profile=profile).process_url(url,playlist=True)
 
 @app.command("process-local")
 def local(path:Annotated[Path,typer.Argument()],config:Annotated[Path|None,typer.Option("--config","-c")]=None,
-          force:Annotated[bool,typer.Option()]=False):
-    cfg=load_config(config); Pipeline(cfg,force=force).process_local(path)
+          force:Annotated[bool,typer.Option()]=False,
+          profile: Annotated[str, typer.Option("--profile", help="no_voiceover or voiceover")] = "no_voiceover"):
+    cfg=load_config(config); Pipeline(cfg,force=force,profile=profile).process_local(path)
 
 
 @app.command("process-sources")
@@ -85,15 +88,52 @@ def _has_usable_sources(path: Path) -> bool:
     )
 
 
+def _usable_source_lines(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    return [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+
+
+def _source_url(line: str) -> str:
+    parts = line.split(maxsplit=1)
+    if len(parts) == 2 and parts[0].lower() in {"video", "playlist"}:
+        return parts[1].strip()
+    return line.strip()
+
+
+def _write_filtered_sources(path: Path, lines: list[str]) -> Path:
+    filtered = path.with_name(f".{path.stem}.filtered.txt")
+    filtered.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+    return filtered
+
+
 @app.command("process-both-sources")
 def process_both_sources(
     config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
     force: Annotated[bool, typer.Option(help="Re-run completed stages")] = False,
 ):
     cfg = load_config(config)
+    no_voiceover_path = Path("sources_no_voiceover.txt")
+    voiceover_path = Path("sources_voiceover.txt")
+    voiceover_urls = {_source_url(line) for line in _usable_source_lines(voiceover_path)}
+    no_voiceover_lines = [
+        line for line in _usable_source_lines(no_voiceover_path)
+        if _source_url(line) not in voiceover_urls
+    ]
+    skipped = len(_usable_source_lines(no_voiceover_path)) - len(no_voiceover_lines)
+
+    no_voiceover_job_path = (
+        _write_filtered_sources(no_voiceover_path, no_voiceover_lines)
+        if no_voiceover_lines
+        else no_voiceover_path
+    )
     jobs = [
-        ("no_voiceover", Path("sources_no_voiceover.txt")),
-        ("voiceover", Path("sources_voiceover.txt")),
+        ("no_voiceover", no_voiceover_job_path),
+        ("voiceover", voiceover_path),
     ]
 
     ran = []
@@ -103,6 +143,12 @@ def process_both_sources(
             continue
         Pipeline(cfg, force=force, profile=profile).process_sources_file(path)
         ran.append(path.name)
+
+    if skipped:
+        typer.echo(
+            f"Skipped {skipped} duplicate no_voiceover source(s) because they also "
+            "exist in sources_voiceover.txt."
+        )
 
     if not ran:
         raise typer.BadParameter(
@@ -162,6 +208,26 @@ def setup_retinaface(
                        check=True)
 
     typer.echo("RetinaFace (ibug.face_detection + ibug.face_alignment) hazır.")
+
+
+@app.command("setup-whisper")
+def setup_whisper(
+    config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    model: Annotated[str | None, typer.Option("--model", help="Override the model to fetch")] = None,
+):
+    """Pre-download the Whisper model so the first run doesn't stall downloading it.
+
+    Fetches the model named in the config (default large-v3-turbo) into the local
+    Hugging Face cache. Run once during setup.
+    """
+    from faster_whisper import WhisperModel
+
+    cfg = load_config(config)
+    name = model or cfg.transcription.model
+    typer.echo(f"Downloading Whisper model '{name}' (once; cached afterwards)...")
+    # cpu/int8 just triggers the download; the cache is reused on any device later.
+    WhisperModel(name, device="cpu", compute_type="int8")
+    typer.echo(f"Whisper model '{name}' ready.")
 
 @app.command("push-data")
 def push_data(

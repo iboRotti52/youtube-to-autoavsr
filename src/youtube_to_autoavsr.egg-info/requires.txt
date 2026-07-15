@@ -1,0 +1,16 @@
+typer<1,>=0.12
+pydantic<3,>=2.7
+PyYAML<7,>=6
+yt-dlp>=2025.1.15
+faster-whisper<2,>=1.1
+opencv-python<5,>=4.10
+mediapipe==0.10.14
+protobuf<5,>=3.20
+numpy<3,>=1.26
+tqdm<5,>=4.66
+webvtt-py<1,>=0.5
+huggingface-hub<1,>=0.24
+
+[dev]
+pytest<9,>=8
+ruff<1,>=0.9

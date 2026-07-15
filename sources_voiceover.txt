@@ -1,2 +1,4 @@
 # Dış ses / B-roll / slayt içerebilen videolar.
 # Her satıra bir YouTube video veya playlist URL'si yaz.
+
+

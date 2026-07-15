@@ -1,4 +1,5 @@
 from __future__ import annotations
+import time
 from pathlib import Path
 from typing import Any
 from .active_speaker import select_active_speaker
@@ -7,6 +8,7 @@ from .config import AppConfig
 from .downloader import download, register_local
 from .manifest import rebuild
 from .media import extract_clip, normalize
+from .scenes import detect_scene_cuts
 from .segment import make_segments
 from .state import StateDB
 from .subtitles import save_youtube_transcript
@@ -97,8 +99,12 @@ class Pipeline:
         normalized = self.workspace/"normalized"/iid/"normalized.mp4"
         words_path = self.workspace/"transcripts"/iid/"words.json"
         segments_path = self.workspace/"transcripts"/iid/"segments.json"
-        self._stage(iid, "normalize",
-                    lambda: normalize(item["source"], normalized, self.cfg.normalization))
+        self._stage(
+            iid,
+            "normalize",
+            lambda: normalize(item["source"], normalized, self.cfg.normalization),
+            outputs=[normalized],
+        )
 
         def transcript():
             if item.get("subtitle_path"):
@@ -112,15 +118,42 @@ class Pipeline:
                 transcribe(normalized, words_path, self.cfg.language, self.cfg.transcription)
             else:
                 raise RuntimeError("No manual subtitle and Whisper fallback disabled")
-        self._stage(iid, "transcribe", transcript)
+        self._stage(iid, "transcribe", transcript, outputs=[words_path])
 
         def segment():
             payload = read_json(words_path)
-            segments = make_segments(payload["words"], self.cfg.segmentation)
+            cut_times = (
+                detect_scene_cuts(normalized, self.cfg.segmentation.scene_cut_threshold)
+                if self.cfg.segmentation.split_on_scene_cut
+                else []
+            )
+            segments = make_segments(
+                payload["words"],
+                self.cfg.segmentation,
+                cut_times,
+                strict_sentence_boundaries=self.profile.verify_lip_sync,
+            )
+            intro_cutoff = (
+                self.cfg.visual_quality.reject_voiceover_segments_before_seconds
+                if self.profile.verify_lip_sync
+                else 0.0
+            )
+            if intro_cutoff > 0:
+                segments = [
+                    row for row in segments
+                    if float(row["start"]) >= intro_cutoff
+                ]
+                for index, row in enumerate(segments):
+                    row["segment_id"] = f"{index:06d}"
             for row in segments:
                 row["transcript_source"] = payload.get("source", "unknown")
             write_json(segments_path, segments)
-        self._stage(iid, "segment", segment)
+        self._stage(
+            iid,
+            f"segment_v3_{self.profile.name}",
+            segment,
+            outputs=[segments_path],
+        )
 
         for seg in read_json(segments_path):
             self._process_segment(item, normalized, seg)
@@ -160,7 +193,30 @@ class Pipeline:
                 if self.cfg.visual_quality.enabled else None
             )
 
-            if visual is not None and visual.status == "rejected":
+            visual_status = visual.status if visual is not None else "accepted"
+            reasons = list(visual.reasons) if visual is not None else []
+
+            if (
+                self.profile.verify_lip_sync
+                and float(segment["start"]) < self.cfg.visual_quality.reject_voiceover_segments_before_seconds
+            ):
+                visual_status = "rejected"
+                reasons.append("voiceover_intro_window")
+                if visual is not None:
+                    visual.status = "rejected"
+                    visual.reasons = reasons
+            elif (
+                self.profile.verify_lip_sync
+                and self.cfg.visual_quality.reject_voiceover_review_segments
+                and visual_status == "review"
+            ):
+                visual_status = "rejected"
+                reasons.append("voiceover_review_rejected")
+                if visual is not None:
+                    visual.status = "rejected"
+                    visual.reasons = reasons
+
+            if visual_status == "rejected":
                 crop_sharpness = 0.0
                 mouth_path_value = ""
             else:
@@ -177,8 +233,6 @@ class Pipeline:
                 coverage >= self.cfg.quality.min_face_coverage
             )
 
-            visual_status = visual.status if visual is not None else "accepted"
-
             if (
                 not base_ok
                 or visual_status == "rejected"
@@ -191,12 +245,25 @@ class Pipeline:
                 quality_status = "accepted"
 
             accepted = quality_status == "accepted"
+            if quality_status == "rejected":
+                for path in (source_clip, audio_clip, speaker_clip, mouth_clip, transcript_path):
+                    if path.exists():
+                        path.unlink()
+                video_path_value = ""
+                active_speaker_path_value = ""
+                audio_path_value = ""
+                mouth_path_value = ""
+            else:
+                video_path_value = str(source_clip)
+                active_speaker_path_value = str(crop_input)
+                audio_path_value = str(audio_clip)
+
             meta = item["metadata"]
             write_json(metadata_path, {
                 "item_id": iid, "segment_id": sid,
-                "video_path": str(source_clip),
-                "active_speaker_path": str(crop_input),
-                "mouth_path": mouth_path_value, "audio_path": str(audio_clip),
+                "video_path": video_path_value,
+                "active_speaker_path": active_speaker_path_value,
+                "mouth_path": mouth_path_value, "audio_path": audio_path_value,
                 "text": segment["text"], "start": segment["start"],
                 "end": segment["end"], "duration": segment["duration"],
                 "source_url": meta.get("source_url"), "title": meta.get("title"),
@@ -211,12 +278,26 @@ class Pipeline:
                 "accepted": accepted,
                 "visual_quality": visual.to_dict() if visual is not None else None,
             })
-        self._stage(key, "clip_v2", build)
+        self._stage(key, f"clip_v6_{self.profile.name}", build)
 
-    def _stage(self, item_id, stage, fn):
-        if not self.force and self.state.done(item_id, stage): return
+    def _stage(self, item_id, stage, fn, outputs: list[Path] | None = None):
+        outputs_exist = all(path.exists() for path in outputs or [])
+        if not self.force and self.state.done(item_id, stage) and outputs_exist:
+            print(f"[stage] {item_id} {stage}: skipped", flush=True)
+            return
+        if not self.force and self.state.done(item_id, stage) and not outputs_exist:
+            print(
+                f"[stage] {item_id} {stage}: output missing, re-running",
+                flush=True,
+            )
+        print(f"[stage] {item_id} {stage}: running", flush=True)
+        started = time.monotonic()
         self.state.set(item_id, stage, "running")
         try: fn()
         except Exception as exc:
+            elapsed = time.monotonic() - started
+            print(f"[stage] {item_id} {stage}: failed ({elapsed:.1f}s) {exc}", flush=True)
             self.state.set(item_id, stage, "failed", str(exc)); raise
         self.state.set(item_id, stage, "done")
+        elapsed = time.monotonic() - started
+        print(f"[stage] {item_id} {stage}: done ({elapsed:.1f}s)", flush=True)

@@ -12,3 +12,4 @@ external/
 .env
 *.token
 hf_token*
+*.egg-info/ # gereksiz build klasörünü hariç tut

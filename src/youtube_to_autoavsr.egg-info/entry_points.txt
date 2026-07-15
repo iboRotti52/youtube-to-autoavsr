@@ -1,0 +1,2 @@
+[console_scripts]
+yt2avsr = yt2avsr.cli:app

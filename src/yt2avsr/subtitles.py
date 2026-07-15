@@ -9,6 +9,9 @@ from .utils import normalize_text, write_json
 
 _TIME = re.compile(r"(?P<h>\d{2}):(?P<m>\d{2}):(?P<s>\d{2})[.,](?P<ms>\d{3})")
 _TAGS = re.compile(r"<[^>]+>")
+# YouTube altyazılarında ">>" / ">>>" konuşmacı-değişimi işaretidir; eğitim
+# etiketinde istenmez (dış ses de dahil bu işaretle gelir).
+_SPEAKER = re.compile(r">>+")
 
 def _seconds(token: str) -> float:
     m = _TIME.search(token)
@@ -58,24 +61,41 @@ def parse_vtt(path: Path) -> list[dict[str, Any]]:
         while i < len(lines) and lines[i].strip():
             text_lines.append(lines[i].strip())
             i += 1
-        text = normalize_text(html.unescape(_TAGS.sub("", " ".join(text_lines))))
+        cleaned = _SPEAKER.sub(" ", _TAGS.sub("", " ".join(text_lines)))
+        text = normalize_text(html.unescape(cleaned))
         if text:
             cues.append({"start": start, "end": end, "text": text})
         i += 1
     return deduplicate(cues)
 
 def deduplicate(cues: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    result, previous = [], ""
+    """YouTube 'kayan pencere' oto-altyazılarındaki tekrarları temizler.
+
+    Her cue, bir öncekinin kuyruğunu tekrar edip üstüne yeni kelime ekleyebilir
+    (örn. "a b" -> "a b c" -> "b c d"). Tam-eşitlik ve prefix kontrolü bu
+    örtüşmeleri kaçırır. Burada kelime seviyesinde, önceki cue'nun sonuyla yeni
+    cue'nun başındaki en uzun ortak diziyi bulup sadece yeni kelimeleri tutarız.
+    """
+    result: list[dict[str, Any]] = []
+    prev_words: list[str] = []
     for cue in cues:
-        original = cue["text"]
-        text = original
-        if text == previous:
+        words = cue["text"].split()
+        if not words:
             continue
-        if previous and text.startswith(previous):
-            text = normalize_text(text[len(previous):])
+        overlap = 0
+        for size in range(min(len(prev_words), len(words)), 0, -1):
+            if prev_words[-size:] == words[:size]:
+                overlap = size
+                break
+        new_words = words[overlap:]
+        if not new_words:
+            # Tamamen tekrar; yeni bilgi yok.
+            prev_words = words
+            continue
+        text = normalize_text(" ".join(new_words))
         if text:
             result.append({**cue, "text": text})
-            previous = original
+        prev_words = words
     return result
 
 def cues_to_words(cues: list[dict[str, Any]], probability: float) -> list[dict[str, Any]]:

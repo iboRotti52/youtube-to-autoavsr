@@ -2,10 +2,13 @@ workspace: data
 language: tr
 
 download:
-  format: "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
+  format: "bestvideo[height<=720]+bestaudio/best[height<=720]"
   playlist_end: null
   subtitle_languages: ["tr", "tr-TR"]
-  use_automatic_youtube_captions: true
+  # YouTube oto-altyazısı "kayan pencere" formatında gelir (tekrarlar + ">>"
+  # işaretleri) ve eğitim etiketi için gürültülüdür. Kapalı: insan yapımı manuel
+  # altyazı yoksa Whisper (large-v3-turbo) temiz kelime-zamanlı etiket üretir.
+  use_automatic_youtube_captions: false
   remote_components: ["ejs:github"]
   js_runtime: "deno"
   retries: 10
@@ -15,7 +18,8 @@ download:
 normalization:
   fps: 25
   audio_sample_rate: 16000
-  max_height: 1080
+  max_height: 720
+  ffmpeg_preset: ultrafast
 
 transcription:
   # Transcript'ler eğitim etiketidir; doğruluk hızdan önemli. large-v3-turbo,
@@ -38,6 +42,10 @@ segmentation:
   pad_seconds: 0.12
   max_gap_seconds: 0.65
   min_words: 2
+  # Segmenti sahne kesmesinde böl (reddetme yerine). Kesmenin iki yanındaki
+  # temiz parçalar min_duration'ı sağlıyorsa korunur.
+  split_on_scene_cut: true
+  scene_cut_threshold: 0.30
 
 # Tek konuşmacılı (talking-head) videolar varsayılır; çoklu yüz / "hangi yüz
 # konuşuyor" mantığı kapalıdır. Yüz seçimini Auto-AVSR cropper yapar.
@@ -54,7 +62,16 @@ auto_avsr:
 
 visual_quality:
   enabled: true
-  sample_every_n_frames: 1
+  # Hız için her kare yerine örneklemeli analiz. 25 fps videoda 5 = saniyede
+  # yaklaşık 5 kalite/lip-sync örneği; dış ses filtresi korunur, süre ciddi düşer.
+  sample_every_n_frames: 5
+  # Dış sesli kaynaklarda ilk saniyelerdeki sunucu selamı/konu anonsu çoğu zaman
+  # ekrandaki ağızla eşleşmez. Sadece voiceover profilinde uygulanır; kapatmak
+  # için 0 yap.
+  reject_voiceover_segments_before_seconds: 15.0
+  # Voiceover kaynaklarda "review" de eğitim için güvenli sayılmaz. İnceleme
+  # yükünü azaltmak için şüpheli klipleri direkt sil.
+  reject_voiceover_review_segments: true
 
   # Conservative thresholds: uncertain clips go to review instead of deletion.
   accept_min_mouth_visible_ratio: 0.88
@@ -66,6 +83,12 @@ visual_quality:
   # Audio-active frames with almost no mouth motion.
   accept_max_static_speech_ratio: 0.18
   review_max_static_speech_ratio: 0.42
+  # Dış ses/üst üste konuşma için daha sert AV-sync kapısı. Voiceover profilinde
+  # ses enerjisi ağız şekli hareketiyle yeterince birlikte gitmiyorsa klip silinir.
+  accept_min_speech_mouth_motion_ratio: 0.38
+  review_min_speech_mouth_motion_ratio: 0.22
+  accept_min_lip_sync_correlation: 0.05
+  review_min_lip_sync_correlation: 0.0
 
   # Longest continuous missing-mouth period.
   accept_max_missing_run_seconds: 0.35
@@ -77,6 +100,8 @@ visual_quality:
 
   scene_cut_hist_threshold: 0.58
   mouth_motion_floor: 0.018
+  mouth_shape_motion_floor: 0.0035
+  mouth_opening_motion_floor: 0.0025
   audio_activity_quantile: 0.55
   landmark_jump_threshold: 0.18
   min_face_detection_confidence: 0.50

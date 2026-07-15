@@ -5,7 +5,7 @@ import yaml
 from pydantic import BaseModel, Field
 
 class DownloadConfig(BaseModel):
-    format: str = "bv*[height>=720]+ba/b[height>=720]/best"
+    format: str = "bestvideo[height<=720]+bestaudio/best[height<=720]"
     playlist_end: int | None = None
     subtitle_languages: list[str] = ["tr", "tr-TR"]
     use_automatic_youtube_captions: bool = True
@@ -18,7 +18,8 @@ class DownloadConfig(BaseModel):
 class NormalizationConfig(BaseModel):
     fps: int = 25
     audio_sample_rate: int = 16000
-    max_height: int = 1080
+    max_height: int = 720
+    ffmpeg_preset: str = "ultrafast"
 
 class TranscriptionConfig(BaseModel):
     model: str = "large-v3-turbo"
@@ -38,6 +39,11 @@ class SegmentationConfig(BaseModel):
     pad_seconds: float = 0.12
     max_gap_seconds: float = 0.65
     min_words: int = 2
+    # Sert kesme (sahne değişimi) bir segmentin içine düşerse, o segmenti
+    # reddetmek yerine kesme noktasında böleriz; böylece kesmenin iki yanındaki
+    # temiz (sürekli dudak hareketli) parçalar korunur.
+    split_on_scene_cut: bool = True
+    scene_cut_threshold: float = 0.30
 
 class ActiveSpeakerConfig(BaseModel):
     # Disabled by default: we assume single-speaker (talking-head) videos and let
@@ -72,19 +78,29 @@ class AutoAVSRConfig(BaseModel):
 
 class VisualQualityConfig(BaseModel):
     enabled: bool = True
-    sample_every_n_frames: int = 1
+    sample_every_n_frames: int = 5
+    # Voiceover/narrated sources often open with an off-screen host greeting or
+    # title prompt while the guest is visible but not speaking. Set 0 to disable.
+    reject_voiceover_segments_before_seconds: float = 15.0
+    reject_voiceover_review_segments: bool = True
     accept_min_mouth_visible_ratio: float = 0.88
     review_min_mouth_visible_ratio: float = 0.68
     accept_max_scene_cut_ratio: float = 0.015
     review_max_scene_cut_ratio: float = 0.050
     accept_max_static_speech_ratio: float = 0.18
     review_max_static_speech_ratio: float = 0.42
+    accept_min_speech_mouth_motion_ratio: float = 0.38
+    review_min_speech_mouth_motion_ratio: float = 0.22
+    accept_min_lip_sync_correlation: float = 0.05
+    review_min_lip_sync_correlation: float = 0.0
     accept_max_missing_run_seconds: float = 0.35
     review_max_missing_run_seconds: float = 1.00
     accept_max_unstable_landmark_ratio: float = 0.12
     review_max_unstable_landmark_ratio: float = 0.35
     scene_cut_hist_threshold: float = 0.58
     mouth_motion_floor: float = 0.018
+    mouth_shape_motion_floor: float = 0.0035
+    mouth_opening_motion_floor: float = 0.0025
     audio_activity_quantile: float = 0.55
     landmark_jump_threshold: float = 0.18
     min_face_detection_confidence: float = 0.50

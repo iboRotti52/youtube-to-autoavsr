@@ -1,3 +1,28 @@
+Metadata-Version: 2.4
+Name: youtube-to-autoavsr
+Version: 0.7.0
+Summary: Prepare permitted YouTube videos for Auto-AVSR-style training pipelines.
+License: Apache-2.0
+Requires-Python: <3.13,>=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: typer<1,>=0.12
+Requires-Dist: pydantic<3,>=2.7
+Requires-Dist: PyYAML<7,>=6
+Requires-Dist: yt-dlp>=2025.1.15
+Requires-Dist: faster-whisper<2,>=1.1
+Requires-Dist: opencv-python<5,>=4.10
+Requires-Dist: mediapipe==0.10.14
+Requires-Dist: protobuf<5,>=3.20
+Requires-Dist: numpy<3,>=1.26
+Requires-Dist: tqdm<5,>=4.66
+Requires-Dist: webvtt-py<1,>=0.5
+Requires-Dist: huggingface-hub<1,>=0.24
+Provides-Extra: dev
+Requires-Dist: pytest<9,>=8; extra == "dev"
+Requires-Dist: ruff<1,>=0.9; extra == "dev"
+Dynamic: license-file
+
 # YouTube → Auto-AVSR Dataset Builder v0.7
 
 Bu araç, izin verilen YouTube videolarından Auto-AVSR tarzı dudak-okuma eğitim
@@ -16,13 +41,13 @@ verisi üretir. Öne çıkan noktalar:
 ```bash
 brew install ffmpeg git git-lfs      # Linux: apt install ffmpeg git git-lfs
 git lfs install
-./scripts/setup_once.sh
-./scripts/install_terminal_command.sh
-source ~/.zshrc
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+yt2avsr setup-external --config configs/default.yaml
+yt2avsr setup-retinaface --config configs/default.yaml
+yt2avsr setup-whisper --config configs/default.yaml
 ```
-
-Bundan sonra bu klasore girmeden terminalden `ytavsr` yazman yeterli olur.
-`ytavsr-setup` ise kurulumu tekrar hazirlamak/guncellemek gerektiginde kullanilir.
 
 ## Kurulum (Windows)
 
@@ -73,22 +98,21 @@ Ana kullanım: linkleri kaynak (`sources`) dosyalarına yaz, tek komutla işle.
 2. Çalıştır:
 
 ```bash
-ytavsr
+yt2avsr process-both-sources --config configs/default.yaml
 ```
 
 İki dosyadan hangisinde link varsa o işlenir; boş dosya atlanır. Tek bir listeyi
 işlemek istersen:
 
 ```bash
-ytavsr process-sources sources_voiceover.txt --config configs/default.yaml --profile voiceover
+yt2avsr process-sources sources_voiceover.txt --config configs/default.yaml --profile voiceover
 ```
 
 Hızlı test için tek video veya playlist:
 
 ```bash
-ytavsr process "YOUTUBE_URL" --config configs/default.yaml
-ytavsr process-playlist "PLAYLIST_URL" --config configs/default.yaml
-ytavsr process "YOUTUBE_URL" --config configs/default.yaml --profile voiceover
+yt2avsr process "YOUTUBE_URL" --config configs/default.yaml
+yt2avsr process-playlist "PLAYLIST_URL" --config configs/default.yaml
 ```
 
 ## Transcript önceliği
@@ -395,7 +419,8 @@ Yüklemek/indirmek için her üye kendi HF **token**'ı ile bir kez giriş yapar
 
 > ⚠️ **Token'ı asla bu repoya, koda veya herhangi bir dosyaya yazma.** Token
 > şifre gibidir; sadece `huggingface-cli login` ile kendi makinende saklanır.
-> `.gitignore` `.env` / `*.token` dosyalarını zaten dışlar. 
+> `.gitignore` `.env` / `*.token` dosyalarını zaten dışlar. Yanlışlıkla bir yere
+> yapıştırdıysan HF Settings'ten hemen **Revoke** edip yenisini oluştur.
 
 Kendi verini yükle (varsayılan olarak yalnızca `accepted` + `review` klipleri):
 
