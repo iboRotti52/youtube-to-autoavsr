@@ -55,18 +55,27 @@ def _get_components(cfg: AutoAVSRConfig):
         if sys.path and sys.path[0] == str(repo):
             sys.path.pop(0)
 
+def _read_rgb_frames(source: Path) -> tuple[np.ndarray, float]:
+    """Read a clip as an (T, H, W, 3) RGB uint8 array, matching what the official
+    Auto-AVSR pipeline feeds its detector. Uses OpenCV so it works on any
+    torchvision version (newer ones dropped torchvision.io.read_video)."""
+    cap = cv2.VideoCapture(str(source))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    frames = []
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+    cap.release()
+    return np.asarray(frames), float(fps) or 25.0
+
+
 def crop_with_official_auto_avsr(source: Path, output: Path,
                                  cfg: AutoAVSRConfig) -> CropMetrics:
-    import torch
-    import torchvision
-
     detector, processor = _get_components(cfg)
 
-    # Mirror the official Auto-AVSR pipeline exactly: it loads RGB frames with
-    # torchvision, feeds the FRAME ARRAY (not a path) to the detector, then the
-    # mean-face processor returns the cropped 96x96 sequence which we write out.
-    video, _, info = torchvision.io.read_video(str(source), pts_unit="sec")
-    frames = video.numpy()  # (T, H, W, C), RGB, uint8
+    frames, fps = _read_rgb_frames(source)
     if frames.shape[0] == 0:
         raise RuntimeError("Source clip has no frames")
 
@@ -79,14 +88,21 @@ def crop_with_official_auto_avsr(source: Path, output: Path,
         raise RuntimeError("Official Auto-AVSR created an empty mouth video")
 
     seq = np.asarray(sequence)
-    if seq.ndim == 3:  # grayscale -> add a channel dim for the writer
+    if seq.ndim == 3:  # grayscale -> add a channel dim
         seq = np.repeat(seq[..., None], 3, axis=-1)
     if seq.dtype != np.uint8:
         seq = np.clip(seq, 0, 255).astype(np.uint8)
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    fps = float(info.get("video_fps", 25.0)) or 25.0
-    torchvision.io.write_video(str(output), torch.from_numpy(seq), fps)
+    h, w = seq.shape[1], seq.shape[2]
+    writer = cv2.VideoWriter(
+        str(output), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h)
+    )
+    if not writer.isOpened():
+        raise RuntimeError(f"Could not open video writer for {output}")
+    for frame in seq:  # OpenCV writes BGR
+        writer.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+    writer.release()
 
     sharp = [
         float(cv2.Laplacian(cv2.cvtColor(f, cv2.COLOR_RGB2GRAY), cv2.CV_64F).var())
