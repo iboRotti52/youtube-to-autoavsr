@@ -11,10 +11,10 @@ verisi üretir. Öne çıkan noktalar:
 3. Creator tarafından yüklenmiş Türkçe altyazı varsa o kullanılır; yoksa
    `faster-whisper large-v3-turbo` çalışır. Düşük güvenli Whisper segmentleri reddedilir.
 
-## Kurulum
+## Kurulum (macOS / Linux)
 
 ```bash
-brew install ffmpeg git git-lfs
+brew install ffmpeg git git-lfs      # Linux: apt install ffmpeg git git-lfs
 git lfs install
 python3.11 -m venv .venv
 source .venv/bin/activate
@@ -22,6 +22,32 @@ pip install -e .
 yt2avsr setup-external --config configs/default.yaml
 yt2avsr setup-retinaface --config configs/default.yaml
 ```
+
+## Kurulum (Windows)
+
+Aynı adımlar, sadece sistem araçları ve venv aktivasyonu farklı. **Python 3.11
+kullan** (mediapipe 0.10.x Windows'ta 3.12+ ile sorun çıkarabilir).
+
+```powershell
+# 1) Sistem araçları (PowerShell)
+winget install Gyan.FFmpeg
+winget install GitHub.GitLFS
+git lfs install
+
+# 2) Sanal ortam + paket
+py -3.11 -m venv .venv
+.venv\Scripts\activate
+pip install -e .
+
+# 3) Auto-AVSR + RetinaFace
+yt2avsr setup-external --config configs/default.yaml
+yt2avsr setup-retinaface --config configs/default.yaml
+```
+
+> Windows'ta `setup-retinaface` sırasında `ibug` paketleri kurulamazsa, o makinede
+> `configs/default.yaml` içinde `detector: mediapipe` yap — ibug/torch gerektirmez,
+> aynı 96×96 ağız ROI'sini üretir. Ana veriyi RetinaFace ile üretmeye devam
+> edebilirsin; yalnızca o makine mediapipe ile çalışır.
 
 `setup-external`, resmî `mpc001/auto_avsr` reposunu `external/auto_avsr` altına klonlar
 ve preprocessing bağımlılıklarını kurar.
