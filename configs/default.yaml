@@ -2,7 +2,7 @@ workspace: data
 language: tr
 
 download:
-  format: "bestvideo[height<=720]+bestaudio/best[height<=720]"
+  format: "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
   playlist_end: null
   subtitle_languages: ["tr", "tr-TR"]
   # Kapalı: manuel/otomatik YouTube altyazısı indirme; herkes Whisper kullansın.
@@ -19,7 +19,7 @@ download:
 normalization:
   fps: 25
   audio_sample_rate: 16000
-  max_height: 720
+  max_height: 1080
   ffmpeg_preset: ultrafast
 
 transcription:
@@ -59,8 +59,9 @@ active_speaker:
 
 auto_avsr:
   repo_dir: external/auto_avsr
-  # Resmî Auto-AVSR ile birebir aynı: RetinaFace. Kurulum için: yt2avsr setup-retinaface
-  detector: retinaface
+  # Mac CPU'da RetinaFace cok yavas kalabilir; hizli yerel uretim icin MediaPipe.
+  # GPU'lu/Colab ortamda resmi Auto-AVSR akisi icin tekrar "retinaface" yapilabilir.
+  detector: mediapipe
   device: auto
   output_size: 96
   strict: true
