@@ -24,6 +24,21 @@ source ~/.zshrc
 Bundan sonra bu klasore girmeden terminalden `ytavsr` yazman yeterli olur.
 `ytavsr-setup` ise kurulumu tekrar hazirlamak/guncellemek gerektiginde kullanilir.
 
+Eger Terminal `yt2avsr: command not found` derse sorun veri isleme degil, komutun
+global olarak kurulu olmamasidir. Bu projede disaridan kullanilacak komut
+`ytavsr`'dir. Alternatif olarak proje klasorundeyken sanal ortamdaki komutu
+dogrudan calistirabilirsin:
+
+```bash
+./.venv/bin/yt2avsr --help
+```
+
+Windows'ta ayni dogrudan komut yolu farklidir:
+
+```powershell
+.venv\Scripts\yt2avsr.exe --help
+```
+
 ## Kurulum (Windows)
 
 Aynı adımlar, sadece sistem araçları ve venv aktivasyonu farklı. **Python 3.11
@@ -400,7 +415,31 @@ Yüklemek/indirmek için her üye kendi HF **token**'ı ile bir kez giriş yapar
 Kendi verini yükle (varsayılan olarak yalnızca `accepted` + `review` klipleri):
 
 ```bash
+ytavsr push-data --config configs/default.yaml
+```
+
+Windows'ta sanal ortam aktifse ayni islem:
+
+```powershell
 yt2avsr push-data --config configs/default.yaml
+```
+
+Eger `ytavsr` bulunamazsa once Terminal ayarini tekrar yukle:
+
+```bash
+source ~/.zshrc
+```
+
+Ya da proje klasorundeyken komutu dogrudan sanal ortamdan calistir:
+
+```bash
+./.venv/bin/yt2avsr push-data --config configs/default.yaml
+```
+
+Windows'ta dogrudan sanal ortamdan calistirma:
+
+```powershell
+.venv\Scripts\yt2avsr.exe push-data --config configs/default.yaml
 ```
 
 Buluta yalnızca görsel dudak-okuma (VSR) için gerekenler gider: `mouth.mp4`,
