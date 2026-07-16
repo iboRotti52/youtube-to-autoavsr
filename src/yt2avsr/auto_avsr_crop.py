@@ -49,7 +49,10 @@ def _get_components(cfg: AutoAVSRConfig):
             from preparation.detectors.mediapipe.video_process import VideoProcess
         else:
             raise ValueError(f"Unsupported official detector: {cfg.detector}")
-        detector = LandmarksDetector(device=_device(cfg.device))
+        if cfg.detector == "retinaface":
+            detector = LandmarksDetector(device=_device(cfg.device))
+        else:
+            detector = LandmarksDetector()
         processor = VideoProcess(convert_gray=False)
         _CACHE[key] = (detector, processor)
         return detector, processor
