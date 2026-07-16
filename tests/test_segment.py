@@ -43,6 +43,25 @@ def test_scene_cut_disabled_keeps_single_segment() -> None:
     assert len(result) == 1
 
 
+def test_subtitle_timed_words_get_extra_end_padding() -> None:
+    words = [
+        {
+            "word": token,
+            "start": 4.06 + idx * (2.68 / 7),
+            "end": 4.06 + (idx + 1) * (2.68 / 7),
+            "probability": 1.0,
+            "timing_source": "subtitle",
+        }
+        for idx, token in enumerate(
+            ["Herkese", "merhaba.", "Güncel", "Türkçe'ye", "tekrar", "hoş", "geldin."]
+        )
+    ]
+    cfg = SegmentationConfig(min_duration=2.0, max_duration=16.0, min_words=2)
+    result = make_segments(words, cfg)
+    assert result[0]["text"] == "Herkese merhaba. Güncel Türkçe'ye tekrar hoş geldin."
+    assert result[0]["end"] == 7.34
+
+
 def _cues(texts: list[str]) -> list[dict]:
     return [{"start": i, "end": i + 1, "text": t} for i, t in enumerate(texts)]
 

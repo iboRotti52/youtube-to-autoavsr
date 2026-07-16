@@ -135,11 +135,13 @@ def download(
                 source.unlink()
             shutil.move(str(downloaded), source)
 
-        subtitle = choose_manual_subtitle(item, cfg.subtitle_languages)
+        subtitle = None
         subtitle_kind = "manual"
-        if subtitle is None and cfg.use_automatic_youtube_captions:
-            subtitle = choose_automatic_subtitle(item, cfg.subtitle_languages)
-            subtitle_kind = "automatic"
+        if cfg.use_youtube_subtitles:
+            subtitle = choose_manual_subtitle(item, cfg.subtitle_languages)
+            if subtitle is None and cfg.use_automatic_youtube_captions:
+                subtitle = choose_automatic_subtitle(item, cfg.subtitle_languages)
+                subtitle_kind = "automatic"
 
         subtitle_path = None
         subtitle_language = None

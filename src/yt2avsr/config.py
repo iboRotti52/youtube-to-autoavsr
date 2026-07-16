@@ -8,6 +8,7 @@ class DownloadConfig(BaseModel):
     format: str = "bestvideo[height<=720]+bestaudio/best[height<=720]"
     playlist_end: int | None = None
     subtitle_languages: list[str] = ["tr", "tr-TR"]
+    use_youtube_subtitles: bool = False
     use_automatic_youtube_captions: bool = True
     remote_components: list[str] = ["ejs:github"]
     js_runtime: str = "deno"
@@ -37,6 +38,7 @@ class SegmentationConfig(BaseModel):
     min_duration: float = 2.0
     max_duration: float = 16.0
     pad_seconds: float = 0.12
+    subtitle_end_pad_seconds: float = 0.60
     max_gap_seconds: float = 0.65
     min_words: int = 2
     # Sert kesme (sahne değişimi) bir segmentin içine düşerse, o segmenti

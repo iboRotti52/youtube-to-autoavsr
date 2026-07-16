@@ -99,8 +99,11 @@ def make_segments(
             continue
         raw_start = float(group[0]["start"])
         raw_end = float(group[-1]["end"])
+        end_pad = cfg.pad_seconds
+        if any(w.get("timing_source") == "subtitle" for w in group):
+            end_pad = max(end_pad, cfg.subtitle_end_pad_seconds)
         start = max(0.0, raw_start - cfg.pad_seconds)
-        end = raw_end + cfg.pad_seconds
+        end = raw_end + end_pad
         # Padding bir sahne kesmesini geçmemeli; aksi halde klip yine cut içerir.
         if cuts:
             before = [c for c in cuts if c <= raw_start]
@@ -110,7 +113,7 @@ def make_segments(
             if after:
                 end = min(end, after[0])
         duration = end - start
-        if duration < cfg.min_duration or duration > cfg.max_duration + 2 * cfg.pad_seconds:
+        if duration < cfg.min_duration or duration > cfg.max_duration + cfg.pad_seconds + end_pad:
             continue
         text = remove_adjacent_repeated_sentences(
             normalize_text(" ".join(w["word"] for w in group))

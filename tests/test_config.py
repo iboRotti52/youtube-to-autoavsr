@@ -9,4 +9,5 @@ def test_1080p_config_extends_default() -> None:
     assert cfg.download.format == "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
     assert cfg.normalization.max_height == 1080
     assert cfg.language == "tr"
+    assert cfg.download.use_youtube_subtitles is False
     assert cfg.transcription.model == "large-v3-turbo"

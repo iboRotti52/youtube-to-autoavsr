@@ -150,7 +150,7 @@ class Pipeline:
             write_json(segments_path, segments)
         self._stage(
             iid,
-            f"segment_v3_{self.profile.name}",
+            f"segment_v4_{self.profile.name}",
             segment,
             outputs=[segments_path],
         )
@@ -284,7 +284,7 @@ class Pipeline:
                 "accepted": accepted,
                 "visual_quality": visual.to_dict() if visual is not None else None,
             })
-        self._stage(key, f"clip_v6_{self.profile.name}", build)
+        self._stage(key, f"clip_v7_{self.profile.name}", build)
 
     def _stage(self, item_id, stage, fn, outputs: list[Path] | None = None):
         outputs_exist = all(path.exists() for path in outputs or [])

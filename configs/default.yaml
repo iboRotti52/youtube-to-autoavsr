@@ -5,9 +5,10 @@ download:
   format: "bestvideo[height<=720]+bestaudio/best[height<=720]"
   playlist_end: null
   subtitle_languages: ["tr", "tr-TR"]
-  # YouTube oto-altyazısı "kayan pencere" formatında gelir (tekrarlar + ">>"
-  # işaretleri) ve eğitim etiketi için gürültülüdür. Kapalı: insan yapımı manuel
-  # altyazı yoksa Whisper (large-v3-turbo) temiz kelime-zamanlı etiket üretir.
+  # Kapalı: manuel/otomatik YouTube altyazısı indirme; herkes Whisper kullansın.
+  use_youtube_subtitles: false
+  # use_youtube_subtitles true yapılırsa, bu ayar otomatik YouTube altyazısını
+  # ayrıca kontrol eder. false iken manuel altyazı varsa onu kullanır.
   use_automatic_youtube_captions: false
   remote_components: ["ejs:github"]
   js_runtime: "deno"
@@ -40,6 +41,10 @@ segmentation:
   min_duration: 2.0
   max_duration: 16.0
   pad_seconds: 0.12
+  # YouTube altyazılarından kelime zamanları sentetik çıkarılır; cue sonları
+  # konuşmanın son kelimelerini biraz erken kesebildiği için bitişte daha geniş
+  # pay bırak.
+  subtitle_end_pad_seconds: 0.60
   max_gap_seconds: 0.65
   min_words: 2
   # Segmenti sahne kesmesinde böl (reddetme yerine). Kesmenin iki yanındaki

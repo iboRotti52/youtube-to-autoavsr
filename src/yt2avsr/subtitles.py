@@ -112,6 +112,7 @@ def cues_to_words(cues: list[dict[str, Any]], probability: float) -> list[dict[s
                 "start": round(cue["start"] + idx * step, 3),
                 "end": round(cue["start"] + (idx + 1) * step, 3),
                 "probability": probability,
+                "timing_source": "subtitle",
             })
     return words
 
