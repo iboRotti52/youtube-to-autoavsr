@@ -1,0 +1,6 @@
+# Strong-computer / GPU preset.
+# Inherits the normal settings and switches Auto-AVSR cropping back to RetinaFace.
+extends: default.yaml
+
+auto_avsr:
+  detector: retinaface

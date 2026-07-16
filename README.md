@@ -61,23 +61,24 @@ Bu komut:
 
 isler. Bos dosyalari atlar.
 
-## Guclu Bilgisayarlar Icin 1080p
+## Guclu Bilgisayarlar Icin RetinaFace
 
-Varsayilan ayar 720p'dir. Daha hizli CPU/GPU ve yeterli disk alani olan
-bilgisayarlarda 1080p kullanabilirsin:
+Varsayilan ayar 1080p + MediaPipe'tir. Mac CPU gibi yerel makinelerde hizli
+veri uretmek icin uygundur. Guclu GPU'lu bilgisayarlarda veya Colab'da resmi
+Auto-AVSR akisine daha yakin RetinaFace crop kullanabilirsin:
 
 ```bash
-ytavsr process-both-sources --config configs/1080p.yaml
+ytavsr process-both-sources --config configs/retinaface.yaml
 ```
 
 Bu ayar:
 
-- YouTube'dan en fazla 1080p video indirir.
-- Normalizasyon sirasinda videoyu en fazla 1080p'de tutar.
+- Varsayilan 1080p indirme/normalizasyon ayarlarini korur.
+- Auto-AVSR crop dedektorunu MediaPipe yerine RetinaFace yapar.
 - Auto-AVSR agiz ciktisini yine 96x96 `mouth.mp4` olarak uretir.
 
-1080p daha fazla disk, RAM ve islem suresi kullanir. Normal bilgisayarlarda
-varsayilan `ytavsr` komutu yani 720p onerilir.
+RetinaFace daha fazla RAM ve islem suresi kullanir. Mac CPU'da varsayilan
+`ytavsr` komutu yani MediaPipe onerilir.
 
 ## Bastan Kurulum: macOS / Linux
 
