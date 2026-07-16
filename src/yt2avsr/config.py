@@ -130,8 +130,26 @@ class AppConfig(BaseModel):
     quality: QualityConfig = Field(default_factory=QualityConfig)
     cloud: CloudConfig = Field(default_factory=CloudConfig)
 
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        if (
+            key in merged
+            and isinstance(merged[key], dict)
+            and isinstance(value, dict)
+        ):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
 def load_config(path: Path | None) -> AppConfig:
     if path is None:
         return AppConfig()
     raw: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    extends = raw.pop("extends", None)
+    if extends:
+        base_path = (path.parent / str(extends)).resolve()
+        base_raw: dict[str, Any] = yaml.safe_load(base_path.read_text(encoding="utf-8")) or {}
+        raw = _deep_merge(base_raw, raw)
     return AppConfig.model_validate(raw)

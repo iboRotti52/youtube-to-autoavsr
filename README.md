@@ -61,6 +61,24 @@ Bu komut:
 
 isler. Bos dosyalari atlar.
 
+## Guclu Bilgisayarlar Icin 1080p
+
+Varsayilan ayar 720p'dir. Daha hizli CPU/GPU ve yeterli disk alani olan
+bilgisayarlarda 1080p kullanabilirsin:
+
+```bash
+ytavsr process-both-sources --config configs/1080p.yaml
+```
+
+Bu ayar:
+
+- YouTube'dan en fazla 1080p video indirir.
+- Normalizasyon sirasinda videoyu en fazla 1080p'de tutar.
+- Auto-AVSR agiz ciktisini yine 96x96 `mouth.mp4` olarak uretir.
+
+1080p daha fazla disk, RAM ve islem suresi kullanir. Normal bilgisayarlarda
+varsayilan `ytavsr` komutu yani 720p onerilir.
+
 ## Bastan Kurulum: macOS / Linux
 
 ### 1. Projeyi indir
@@ -434,7 +452,8 @@ ytavsr pull-data --config configs/default.yaml --dest data_cloud --contributor i
 - Proje Python `>=3.10,<3.13` ister; pratikte Python 3.11 onerilir.
 - Varsayilan Whisper modeli `large-v3-turbo`.
 - Varsayilan dil `tr`.
-- Varsayilan video yuksekligi en fazla 720p.
+- Varsayilan video yuksekligi en fazla 720p; guclu bilgisayarlar icin
+  `configs/1080p.yaml` kullanilabilir.
 - Auto-AVSR cikti boyutu 96x96.
 - Varsayilan yuz tespit yontemi RetinaFace.
 - Coklu yuz / aktif konusmaci secimi bu surumde kaldirildi.

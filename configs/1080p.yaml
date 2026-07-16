@@ -1,0 +1,9 @@
+# Strong-computer preset.
+# Inherits the normal settings and only raises download/normalization height.
+extends: default.yaml
+
+download:
+  format: "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
+
+normalization:
+  max_height: 1080
