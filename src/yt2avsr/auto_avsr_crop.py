@@ -2,6 +2,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Sequence
 import cv2
 import numpy as np
 from .config import AutoAVSRConfig
@@ -12,6 +13,7 @@ class CropMetrics:
     sharpness: float
 
 _CACHE = {}
+_LANDMARK_CACHE = {}
 
 def _device(value: str) -> str:
     if value != "auto":
@@ -71,15 +73,107 @@ def _read_rgb_frames(source: Path) -> tuple[np.ndarray, float]:
     return np.asarray(frames), float(fps) or 25.0
 
 
+def _probe_frame_count(source: Path) -> tuple[int, float]:
+    cap = cv2.VideoCapture(str(source))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    frame_count = int(round(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0))
+    cap.release()
+    if frame_count > 0:
+        return frame_count, float(fps) or 25.0
+
+    frames, fallback_fps = _read_rgb_frames(source)
+    return int(frames.shape[0]), fallback_fps
+
+
+def _read_rgb_frame_slice(source: Path, start_frame: int, length: int) -> tuple[np.ndarray, float]:
+    cap = cv2.VideoCapture(str(source))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, start_frame))
+    frames = []
+    while len(frames) < length:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+    cap.release()
+    return np.asarray(frames), float(fps) or 25.0
+
+
+def _read_cached_landmarks(source: Path, cfg: AutoAVSRConfig) -> tuple[list, float]:
+    source = source.resolve()
+    stat = source.stat()
+    key = (
+        str(source),
+        stat.st_mtime_ns,
+        stat.st_size,
+        cfg.detector,
+        _device(cfg.device),
+    )
+    if key in _LANDMARK_CACHE:
+        return _LANDMARK_CACHE[key]
+
+    detector, _ = _get_components(cfg)
+    cap = cv2.VideoCapture(str(source))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    landmarks = []
+    batch = []
+    batch_size = 250
+
+    try:
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            batch.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            if len(batch) >= batch_size:
+                landmarks.extend(detector(np.asarray(batch)))
+                batch.clear()
+
+        if batch:
+            landmarks.extend(detector(np.asarray(batch)))
+    finally:
+        cap.release()
+
+    if not landmarks:
+        raise RuntimeError("Source video has no frames for landmark cache")
+
+    _LANDMARK_CACHE[key] = (landmarks, float(fps) or 25.0)
+    return _LANDMARK_CACHE[key]
+
+
+def _copy_landmarks(landmarks: Sequence, start: int, length: int) -> list:
+    selected = list(landmarks[start:start + length])
+    if len(selected) < length:
+        selected.extend([None] * (length - len(selected)))
+    return [None if lm is None else np.array(lm, copy=True) for lm in selected]
+
+
 def crop_with_official_auto_avsr(source: Path, output: Path,
-                                 cfg: AutoAVSRConfig) -> CropMetrics:
+                                 cfg: AutoAVSRConfig,
+                                 *,
+                                 landmark_source: Path | None = None,
+                                 start_seconds: float | None = None) -> CropMetrics:
     detector, processor = _get_components(cfg)
 
-    frames, fps = _read_rgb_frames(source)
+    if landmark_source is not None and start_seconds is not None:
+        source_frame_count, fps = _probe_frame_count(source)
+        if source_frame_count == 0:
+            raise RuntimeError("Source clip has no frames")
+        cached_landmarks, landmark_fps = _read_cached_landmarks(landmark_source, cfg)
+        start_frame = max(0, int(round(start_seconds * landmark_fps)))
+        frames, _ = _read_rgb_frame_slice(
+            landmark_source, start_frame, source_frame_count
+        )
+        landmarks = _copy_landmarks(cached_landmarks, start_frame, frames.shape[0])
+    else:
+        frames, fps = _read_rgb_frames(source)
+        if frames.shape[0] == 0:
+            raise RuntimeError("Source clip has no frames")
+        landmarks = detector(frames)
+
     if frames.shape[0] == 0:
         raise RuntimeError("Source clip has no frames")
 
-    landmarks = detector(frames)
     if landmarks is None or all(lm is None for lm in landmarks):
         raise RuntimeError("Official Auto-AVSR detector returned no landmarks")
 

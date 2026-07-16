@@ -221,7 +221,13 @@ class Pipeline:
                 mouth_path_value = ""
             else:
                 crop = crop_with_official_auto_avsr(
-                    crop_input, mouth_clip, self.cfg.auto_avsr
+                    crop_input,
+                    mouth_clip,
+                    self.cfg.auto_avsr,
+                    landmark_source=normalized if crop_input == source_clip else None,
+                    start_seconds=(
+                        float(segment["start"]) if crop_input == source_clip else None
+                    ),
                 )
                 crop_sharpness = crop.sharpness
                 mouth_path_value = str(mouth_clip)
