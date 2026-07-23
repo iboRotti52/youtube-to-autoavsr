@@ -15,6 +15,23 @@ class CropMetrics:
 _CACHE = {}
 _LANDMARK_CACHE = {}
 
+
+class NoUsableFaceError(RuntimeError):
+    """Raised when Auto-AVSR cannot find a face suitable for mouth cropping."""
+
+
+def _detect_landmarks(detector, frames: np.ndarray) -> list:
+    """Allow face-free batches while scanning a longer source video."""
+    try:
+        return list(detector(frames))
+    except AssertionError as exc:
+        # The official MediaPipe detector uses this assertion when a batch has
+        # frames but none of them contains a detectable face.
+        if "Cannot detect any frames in the video" not in str(exc):
+            raise
+        return [None] * int(frames.shape[0])
+
+
 def _device(value: str) -> str:
     if value != "auto":
         return value
@@ -129,11 +146,11 @@ def _read_cached_landmarks(source: Path, cfg: AutoAVSRConfig) -> tuple[list, flo
                 break
             batch.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             if len(batch) >= batch_size:
-                landmarks.extend(detector(np.asarray(batch)))
+                landmarks.extend(_detect_landmarks(detector, np.asarray(batch)))
                 batch.clear()
 
         if batch:
-            landmarks.extend(detector(np.asarray(batch)))
+            landmarks.extend(_detect_landmarks(detector, np.asarray(batch)))
     finally:
         cap.release()
 
@@ -172,17 +189,17 @@ def crop_with_official_auto_avsr(source: Path, output: Path,
         frames, fps = _read_rgb_frames(source)
         if frames.shape[0] == 0:
             raise RuntimeError("Source clip has no frames")
-        landmarks = detector(frames)
+        landmarks = _detect_landmarks(detector, frames)
 
     if frames.shape[0] == 0:
         raise RuntimeError("Source clip has no frames")
 
     if landmarks is None or all(lm is None for lm in landmarks):
-        raise RuntimeError("Official Auto-AVSR detector returned no landmarks")
+        raise NoUsableFaceError("Official Auto-AVSR detector returned no landmarks")
 
     sequence = processor(frames, landmarks)
     if sequence is None or len(sequence) == 0:
-        raise RuntimeError("Official Auto-AVSR created an empty mouth video")
+        raise NoUsableFaceError("Official Auto-AVSR created an empty mouth video")
 
     seq = np.asarray(sequence)
     if seq.ndim == 3:  # grayscale -> add a channel dim

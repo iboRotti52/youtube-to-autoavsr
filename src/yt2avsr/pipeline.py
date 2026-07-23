@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from typing import Any
 from .active_speaker import select_active_speaker
-from .auto_avsr_crop import crop_with_official_auto_avsr
+from .auto_avsr_crop import NoUsableFaceError, crop_with_official_auto_avsr
 from .config import AppConfig
 from .downloader import download, register_local
 from .manifest import rebuild
@@ -220,17 +220,28 @@ class Pipeline:
                 crop_sharpness = 0.0
                 mouth_path_value = ""
             else:
-                crop = crop_with_official_auto_avsr(
-                    crop_input,
-                    mouth_clip,
-                    self.cfg.auto_avsr,
-                    landmark_source=normalized if crop_input == source_clip else None,
-                    start_seconds=(
-                        float(segment["start"]) if crop_input == source_clip else None
-                    ),
-                )
-                crop_sharpness = crop.sharpness
-                mouth_path_value = str(mouth_clip)
+                try:
+                    crop = crop_with_official_auto_avsr(
+                        crop_input,
+                        mouth_clip,
+                        self.cfg.auto_avsr,
+                        landmark_source=normalized if crop_input == source_clip else None,
+                        start_seconds=(
+                            float(segment["start"]) if crop_input == source_clip else None
+                        ),
+                    )
+                    crop_sharpness = crop.sharpness
+                    mouth_path_value = str(mouth_clip)
+                except NoUsableFaceError:
+                    # A face-free clip is a normal dataset rejection, not a
+                    # reason to abort every remaining item in a playlist.
+                    visual_status = "rejected"
+                    reasons.append("auto_avsr_no_face")
+                    if visual is not None:
+                        visual.status = "rejected"
+                        visual.reasons = reasons
+                    crop_sharpness = 0.0
+                    mouth_path_value = ""
 
             asr_conf = float(segment.get("asr_confidence", 1.0))
             base_ok = (
