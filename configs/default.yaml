@@ -36,6 +36,14 @@ transcription:
   min_segment_probability: 0.72
   max_no_speech_probability: 0.45
   use_whisper_when_no_manual_subtitles: true
+  # Kesilmiş her klibi ayrıca dinle: transcript.txt klibin gerçek sesinden
+  # yeniden üretilir, ana video zamanlamasından gelen kaymalar taşınmaz.
+  verify_clips: true
+  replace_with_clip_transcript: true
+  # Eski ve klipten yeniden çıkarılan metin bunun altında benzerse klibi insan
+  # kontrolü için review manifestine gönder.
+  clip_min_similarity: 0.60
+  clip_mismatch_status: review
 
 segmentation:
   min_duration: 2.0

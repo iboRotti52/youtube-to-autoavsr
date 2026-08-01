@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
 import yaml
 from pydantic import BaseModel, Field
+
 
 class DownloadConfig(BaseModel):
     format: str = "bestvideo[height<=720]+bestaudio/best[height<=720]"
@@ -33,6 +36,13 @@ class TranscriptionConfig(BaseModel):
     min_segment_probability: float = 0.72
     max_no_speech_probability: float = 0.45
     use_whisper_when_no_manual_subtitles: bool = True
+    # Re-run ASR on each extracted clip. This makes transcript.txt describe the
+    # actual clip audio instead of inheriting possible boundary/timing drift from
+    # the full-video transcript.
+    verify_clips: bool = True
+    replace_with_clip_transcript: bool = True
+    clip_min_similarity: float = 0.60
+    clip_mismatch_status: Literal["review", "rejected"] = "review"
 
 class SegmentationConfig(BaseModel):
     min_duration: float = 2.0

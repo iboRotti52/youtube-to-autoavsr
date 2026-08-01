@@ -1,21 +1,28 @@
 from __future__ import annotations
+
 import time
 from pathlib import Path
-from typing import Any
+
 from .active_speaker import select_active_speaker
 from .auto_avsr_crop import NoUsableFaceError, crop_with_official_auto_avsr
 from .config import AppConfig
 from .downloader import download, register_local
 from .manifest import rebuild
 from .media import extract_clip, normalize
+from .profiles import get_profile
 from .scenes import detect_scene_cuts
 from .segment import make_segments
 from .state import StateDB
 from .subtitles import save_youtube_transcript
-from .transcribe import transcribe
+from .transcribe import (
+    transcribe,
+    transcript_similarity,
+    words_confidence,
+    words_to_text,
+)
 from .utils import read_json, write_json
 from .visual_quality import analyze_visual_quality
-from .profiles import get_profile
+
 
 class Pipeline:
     def __init__(self, cfg: AppConfig, *, force: bool = False, profile: str = "no_voiceover") -> None:
@@ -165,12 +172,50 @@ class Pipeline:
         source_clip, audio_clip = out/"source.mp4", out/"audio.wav"
         speaker_clip, mouth_clip = out/"active_speaker.mp4", out/"mouth.mp4"
         transcript_path, metadata_path = out/"transcript.txt", out/"metadata.json"
+        clip_words_path = out/"clip_transcript.json"
 
         def build():
             out.mkdir(parents=True, exist_ok=True)
             extract_clip(normalized, segment["start"], segment["end"],
                          source_clip, audio_clip, self.cfg.normalization)
-            transcript_path.write_text(segment["text"]+"\n", encoding="utf-8")
+
+            original_text = segment["text"]
+            label_text = original_text
+            asr_conf = float(segment.get("asr_confidence", 1.0))
+            transcript_source = segment.get("transcript_source")
+            transcript_check = {
+                "enabled": False,
+                "status": "not_run",
+                "similarity": None,
+                "original_text": original_text,
+                "verified_text": None,
+            }
+            if self.cfg.transcription.verify_clips:
+                clip_words = transcribe(
+                    audio_clip,
+                    clip_words_path,
+                    self.cfg.language,
+                    self.cfg.transcription,
+                )
+                verified_text = words_to_text(clip_words)
+                similarity = transcript_similarity(original_text, verified_text)
+                asr_conf = words_confidence(clip_words)
+                mismatch = similarity < self.cfg.transcription.clip_min_similarity
+                transcript_check = {
+                    "enabled": True,
+                    "status": "mismatch" if mismatch else "matched",
+                    "similarity": similarity,
+                    "minimum_similarity": self.cfg.transcription.clip_min_similarity,
+                    "original_text": original_text,
+                    "verified_text": verified_text,
+                    "confidence": asr_conf,
+                    "word_count": len(clip_words),
+                }
+                if self.cfg.transcription.replace_with_clip_transcript:
+                    label_text = verified_text
+                    transcript_source = "whisper_clip_verification"
+
+            transcript_path.write_text(label_text+"\n", encoding="utf-8")
 
             if self.cfg.active_speaker.enabled:
                 asd = select_active_speaker(source_clip, speaker_clip,
@@ -243,20 +288,24 @@ class Pipeline:
                     crop_sharpness = 0.0
                     mouth_path_value = ""
 
-            asr_conf = float(segment.get("asr_confidence", 1.0))
             base_ok = (
+                bool(label_text) and
                 asr_conf >= self.cfg.quality.min_asr_confidence and
                 as_score >= self.cfg.quality.min_active_speaker_score and
                 coverage >= self.cfg.quality.min_face_coverage
             )
+            transcript_mismatch = transcript_check["status"] == "mismatch"
 
             if (
                 not base_ok
                 or visual_status == "rejected"
                 or crop_sharpness < self.cfg.quality.min_sharpness
+            ) or (
+                transcript_mismatch
+                and self.cfg.transcription.clip_mismatch_status == "rejected"
             ):
                 quality_status = "rejected"
-            elif visual_status == "review":
+            elif visual_status == "review" or transcript_mismatch:
                 quality_status = "review"
             else:
                 quality_status = "accepted"
@@ -281,11 +330,13 @@ class Pipeline:
                 "video_path": video_path_value,
                 "active_speaker_path": active_speaker_path_value,
                 "mouth_path": mouth_path_value, "audio_path": audio_path_value,
-                "text": segment["text"], "start": segment["start"],
+                "text": label_text, "original_text": original_text,
+                "start": segment["start"],
                 "end": segment["end"], "duration": segment["duration"],
                 "source_url": meta.get("source_url"), "title": meta.get("title"),
                 "channel": meta.get("channel"),
-                "transcript_source": segment.get("transcript_source"),
+                "transcript_source": transcript_source,
+                "transcript_check": transcript_check,
                 "asr_confidence": asr_conf,
                 "active_speaker_score": as_score,
                 "face_coverage": coverage,
@@ -295,7 +346,7 @@ class Pipeline:
                 "accepted": accepted,
                 "visual_quality": visual.to_dict() if visual is not None else None,
             })
-        self._stage(key, f"clip_v7_{self.profile.name}", build)
+        self._stage(key, f"clip_v8_transcript_check_{self.profile.name}", build)
 
     def _stage(self, item_id, stage, fn, outputs: list[Path] | None = None):
         outputs_exist = all(path.exists() for path in outputs or [])

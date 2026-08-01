@@ -1,10 +1,13 @@
 from __future__ import annotations
-import csv, json
+
+import csv
+import json
 from pathlib import Path
 
 FIELDS = [
  "item_id","segment_id","video_path","active_speaker_path","mouth_path","audio_path",
- "text","start","end","duration","source_url","title","channel","transcript_source",
+ "text","original_text","start","end","duration","source_url","title","channel",
+ "transcript_source","transcript_check_status","transcript_similarity",
  "asr_confidence","active_speaker_score","face_coverage","sharpness",
  "source_profile","quality_status","talknet_status","talknet_speaking_ratio","talknet_reason","mouth_visible_ratio","scene_cut_ratio","static_speech_ratio",
  "speech_mouth_motion_ratio","lip_sync_correlation","mouth_opening_correlation",
@@ -27,6 +30,9 @@ def _flatten(record):
     row["max_missing_run_seconds"] = visual.get("max_missing_run_seconds")
     row["unstable_landmark_ratio"] = visual.get("unstable_landmark_ratio")
     row["visual_quality_reasons"] = "|".join(visual.get("reasons") or [])
+    transcript_check = row.pop("transcript_check", None) or {}
+    row["transcript_check_status"] = transcript_check.get("status")
+    row["transcript_similarity"] = transcript_check.get("similarity")
     return row
 
 def rebuild(workspace: Path):

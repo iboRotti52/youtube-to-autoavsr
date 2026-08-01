@@ -268,6 +268,7 @@ data/clips/<video>/<segment>/
 ├── source.mp4
 ├── mouth.mp4
 ├── audio.wav
+├── clip_transcript.json
 ├── transcript.txt
 └── metadata.json
 ```
@@ -278,6 +279,7 @@ En onemli dosyalar:
 | --- | --- |
 | `mouth.mp4` | Auto-AVSR icin hazir 96x96 agiz videosu. |
 | `transcript.txt` | Klip metni. |
+| `clip_transcript.json` | Klip sesinden yeniden uretilen kelime zamanlari ve guven skorlari. |
 | `metadata.json` | Klip hakkinda teknik bilgiler. |
 | `source.mp4` | Ham klip, genelde kontrol/debug icin. |
 | `audio.wav` | Klip sesi. |
@@ -304,9 +306,12 @@ data/manifests/
 Varsayilan akis:
 
 ```text
-1. Creator tarafindan yuklenmis Turkce altyazi
-2. Altyazi yoksa Whisper large-v3-turbo
-3. Dusuk guvenli segmentleri eleme
+1. Ana videoyu Whisper large-v3-turbo ile yazıya dök
+2. Bu metinden klip sınırlarını seç
+3. Kesilmiş her klibi ayrıca Whisper ile yazıya dök
+4. transcript.txt dosyasını klip sesinden çıkan metinle güncelle
+5. Eski/yeni metin benzerliği düşükse klibi review grubuna gönder
+6. Düşük güvenli segmentleri ele
 ```
 
 YouTube otomatik altyazisi varsayilan olarak kapali. Cunku otomatik altyazi
@@ -441,6 +446,9 @@ Herkesin verisini indirmek:
 ```bash
 ytavsr pull-data --config configs/default.yaml --dest data_cloud
 ```
+
+Model eğitimi ve Türkçe Auto-AVSR fine-tune akışı ayrı
+`auto-avsr-turkish-finetune` projesinde tutulur.
 
 Tek bir kisinin verisini indirmek:
 
