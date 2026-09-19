@@ -56,3 +56,27 @@ def test_modal_app_compiles():
     assert app_path.exists()
     compiled = py_compile.compile(str(app_path))
     assert compiled is not None
+
+
+def test_modal_app_ast_structure():
+    import ast
+    app_path = Path(__file__).resolve().parent.parent / "modal_app.py"
+    tree = ast.parse(app_path.read_text(encoding="utf-8"))
+
+    func_names = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+    assert "process_single_video_modal" in func_names, "process_single_video_modal worker must be defined"
+    assert "process_sources_on_modal" in func_names, "process_sources_on_modal coordinator must be defined"
+    assert "main" in func_names, "main local_entrypoint must be defined"
+
+    # Check main argument defaults
+    main_func = next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "main")
+    arg_names = [arg.arg for arg in main_func.args.args]
+    assert "gpu" in arg_names
+    assert "cpu" in arg_names
+    assert "max_containers" in arg_names
+
+    # Check volume usage
+    code = app_path.read_text(encoding="utf-8")
+    assert "modal.Volume.from_name" in code
+    assert "volume.commit()" in code
+    assert "volume.reload()" in code
