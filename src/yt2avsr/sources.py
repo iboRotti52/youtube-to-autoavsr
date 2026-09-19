@@ -82,12 +82,151 @@ def extract_playlist_id(url_or_id: str) -> str | None:
     return None
 
 
+def get_source_key(url_or_id: str) -> str | None:
+    """Return a normalized unique key for deduplication.
+
+    - YouTube videos: 'video:<11_char_id>'
+    - YouTube playlists: 'playlist:<playlist_id>'
+    - Other URLs: canonicalized URL or stripped string
+    Returns None for comments, blank lines, or invalid inputs.
+    """
+    raw = url_or_id.strip()
+    if not raw or raw.startswith("#"):
+        return None
+
+    parts = raw.split(maxsplit=1)
+    is_explicit_playlist = len(parts) == 2 and parts[0].lower() == "playlist"
+    is_explicit_video = len(parts) == 2 and parts[0].lower() == "video"
+    target = parts[1].strip() if (is_explicit_playlist or is_explicit_video) else raw
+
+    if not is_explicit_playlist:
+        vid = extract_video_id(target)
+        if vid:
+            return f"video:{vid}"
+
+    pid = extract_playlist_id(target)
+    if pid:
+        return f"playlist:{pid}"
+
+    return canonicalize_source(target)
+
+
+def is_playlist_source(mode: str, url: str) -> bool:
+    """Determine whether a source line represents a playlist."""
+    if mode == "playlist":
+        return True
+    if mode == "video":
+        return False
+    # mode == "auto"
+    if extract_video_id(url) is not None:
+        return False
+    return bool(extract_playlist_id(url) or "/playlist" in url or "list=" in url)
+
+
 def canonicalize_source(url_or_id: str) -> str:
-    """Return standard https://www.youtube.com/watch?v=ID if video ID found, else stripped URL."""
-    vid = extract_video_id(url_or_id)
-    if vid:
-        return f"https://www.youtube.com/watch?v={vid}"
-    return url_or_id.strip()
+    """Return standard https://www.youtube.com/watch?v=ID if video ID found,
+    or https://www.youtube.com/playlist?list=ID if playlist ID found,
+    else stripped URL."""
+    raw = url_or_id.strip()
+    if not raw or raw.startswith("#"):
+        return raw
+
+    parts = raw.split(maxsplit=1)
+    prefix = ""
+    if len(parts) == 2 and parts[0].lower() in {"video", "playlist"}:
+        if parts[0].lower() == "playlist":
+            prefix = "playlist "
+        clean_target = parts[1].strip()
+    else:
+        clean_target = raw
+
+    if not prefix:
+        vid = extract_video_id(clean_target)
+        if vid:
+            return f"https://www.youtube.com/watch?v={vid}"
+
+    pid = extract_playlist_id(clean_target)
+    if pid:
+        return f"{prefix}https://www.youtube.com/playlist?list={pid}".strip()
+
+    return raw
+
+
+def deduplicate_source_lines(
+    lines: Iterable[str],
+    *,
+    seen_keys: set[str] | None = None,
+    canonicalize: bool = False,
+) -> tuple[list[str], list[str]]:
+    """Deduplicate lines from a source file, preserving comments and empty lines.
+
+    Args:
+        lines: Sequence of raw lines from a source file.
+        seen_keys: Optional set of already seen keys (mutated in place).
+        canonicalize: If True, standardizes video and playlist URLs.
+
+    Returns:
+        (deduped_lines, duplicate_lines)
+    """
+    if seen_keys is None:
+        seen_keys = set()
+
+    deduped: list[str] = []
+    duplicates: list[str] = []
+
+    for raw in lines:
+        line = raw.rstrip("\r\n")
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            deduped.append(line)
+            continue
+
+        key = get_source_key(stripped)
+        if not key:
+            deduped.append(line)
+            continue
+
+        if key in seen_keys:
+            duplicates.append(stripped)
+            continue
+
+        seen_keys.add(key)
+        if canonicalize:
+            deduped.append(canonicalize_source(stripped))
+        else:
+            deduped.append(line)
+
+    return deduped, duplicates
+
+
+def deduplicate_source_file(
+    path: Path,
+    *,
+    in_place: bool = True,
+    canonicalize: bool = False,
+    seen_keys: set[str] | None = None,
+) -> tuple[int, list[str]]:
+    """Inspect and deduplicate a sources file.
+
+    Returns:
+        (count_removed, list_of_duplicate_urls)
+    """
+    if not path.exists():
+        return 0, []
+
+    content = path.read_text(encoding="utf-8")
+    lines = content.splitlines()
+    deduped_lines, duplicates = deduplicate_source_lines(
+        lines, seen_keys=seen_keys, canonicalize=canonicalize
+    )
+
+    if duplicates and in_place:
+        new_content = "\n".join(deduped_lines)
+        if content.endswith("\n") or not new_content.endswith("\n"):
+            new_content += "\n"
+        path.write_text(new_content, encoding="utf-8")
+
+    return len(duplicates), duplicates
 
 
 def load_processed_ids(path: Path = Path("processed_sources.txt")) -> set[str]:
@@ -101,9 +240,14 @@ def load_processed_ids(path: Path = Path("processed_sources.txt")) -> set[str]:
         if not line or line.startswith("#"):
             continue
 
+        key = get_source_key(line)
+        if key:
+            processed.add(key)
+
         vid = extract_video_id(line)
         if vid:
             processed.add(vid)
+            processed.add(f"video:{vid}")
         # Also store raw normalized string for direct matching
         processed.add(line)
         processed.add(canonicalize_source(line))
@@ -112,8 +256,12 @@ def load_processed_ids(path: Path = Path("processed_sources.txt")) -> set[str]:
 
 def is_source_processed(url_or_id: str, processed_ids: set[str]) -> bool:
     """Check if a video URL or ID is already in processed_ids."""
+    key = get_source_key(url_or_id)
+    if key and key in processed_ids:
+        return True
+
     vid = extract_video_id(url_or_id)
-    if vid and vid in processed_ids:
+    if vid and (vid in processed_ids or f"video:{vid}" in processed_ids):
         return True
 
     raw = url_or_id.strip()
@@ -320,10 +468,7 @@ def partition_sources(
     playlist_sources: list[tuple[str, str]] = []
     single_sources: list[tuple[str, str]] = []
     for mode, url in sources:
-        is_playlist = mode == "playlist" or (
-            mode == "auto" and ("list=" in url or "/playlist" in url)
-        )
-        if is_playlist:
+        if is_playlist_source(mode, url):
             playlist_sources.append((mode, url))
         else:
             single_sources.append((mode, url))

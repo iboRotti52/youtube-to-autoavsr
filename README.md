@@ -61,7 +61,20 @@ Bu komut:
 - `sources_no_voiceover.txt` dosyasindaki linkleri `no_voiceover` profiliyle,
 - `sources_voiceover.txt` dosyasindaki linkleri `voiceover` profiliyle
 
-isler. Bos dosyalari atlar.
+isler. Bos dosyalari atlar. Otomatik olarak liste ici ve listeler arasi mukerrer linkleri filtreler.
+
+### Mukerrer (Duplicate) Video Korumasi
+
+Sistem video linklerini video kimligi (Video ID) bazinda otomatik olarak tekillestirir:
+- **Otomatik Calisma Korumasi:** `ytavsr` komutu calistiginda; ayni dosya icindeki veya iki dosya arasindaki mukerrer linkler (farkli URL formatlari `youtu.be`, `shorts`, veya `&list=...&index=...` gibi parametreler icerse dahi) otomatik olarak tespit edilir ve sadece bir kez islenir.
+- **Kaynak Dosyalarini Temizlemek:** Kaynak dosyalarindaki tekrarlayan satirlari temizlemek icin:
+  ```bash
+  # Sadece kontrol etmek ve mukerrerleri listelemek:
+  ytavsr dedup-sources --check
+
+  # Dosyalardaki mukerrerleri yerinde temizlemek (yorum ve siralamayi korur):
+  ytavsr dedup-sources
+  ```
 
 ## Coklu Bilgisayar ile Paralel Calisma (Sharding / Is Bolusturme)
 

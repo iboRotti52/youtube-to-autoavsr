@@ -14,6 +14,8 @@ from .scenes import detect_scene_cuts
 from .segment import make_segments
 from .sources import (
     append_processed_sources,
+    get_source_key,
+    is_playlist_source,
     is_source_processed,
     load_processed_ids,
     partition_sources,
@@ -60,6 +62,11 @@ class Pipeline:
         )
         for item in items:
             self._process_item(item)
+            raw_vid = str(item.get("id", ""))
+            if raw_vid:
+                processed_ids.add(raw_vid)
+                processed_ids.add(f"video:{raw_vid}")
+                processed_ids.add(f"https://www.youtube.com/watch?v={raw_vid}")
         rebuild(self.workspace)
         if items:
             append_processed_sources(
@@ -98,6 +105,19 @@ class Pipeline:
         if not sources:
             raise ValueError(f"No usable sources found in {path}")
 
+        # Intra-file deduplication
+        seen_keys: set[str] = set()
+        deduped_sources = []
+        for mode, url in sources:
+            key = get_source_key(url)
+            if key and key in seen_keys:
+                print(f"[SKIP] Mükerrer link (aynı listede tekrar): {url}")
+                continue
+            if key:
+                seen_keys.add(key)
+            deduped_sources.append((mode, url))
+        sources = deduped_sources
+
         if self.shard:
             original_count = len(sources)
             sources = partition_sources(sources, self.shard)
@@ -109,9 +129,7 @@ class Pipeline:
         results = []
         failures = []
         for index, (mode, url) in enumerate(sources, start=1):
-            playlist = mode == "playlist" or (
-                mode == "auto" and ("list=" in url or "/playlist" in url)
-            )
+            playlist = is_playlist_source(mode, url)
             if not playlist and is_source_processed(url, processed_ids):
                 print(
                     f"[SKIP] [{index}/{len(sources)}] {url}: "
@@ -131,6 +149,11 @@ class Pipeline:
                 )
                 for item in items:
                     self._process_item(item)
+                    raw_vid = str(item.get("id", ""))
+                    if raw_vid:
+                        processed_ids.add(raw_vid)
+                        processed_ids.add(f"video:{raw_vid}")
+                        processed_ids.add(f"https://www.youtube.com/watch?v={raw_vid}")
                 results.extend(items)
                 if items:
                     append_processed_sources(

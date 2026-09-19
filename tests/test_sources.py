@@ -12,9 +12,13 @@ if "huggingface_hub" not in sys.modules:
 from yt2avsr.sources import (
     append_processed_sources,
     canonicalize_source,
+    deduplicate_source_file,
+    deduplicate_source_lines,
     extract_playlist_id,
     extract_video_id,
     filter_by_shard,
+    get_source_key,
+    is_playlist_source,
     is_source_processed,
     load_processed_ids,
     parse_shard,
@@ -167,4 +171,83 @@ def test_partition_sources():
 
     assert v0_urls == ["https://youtube.com/watch?v=video000001", "https://youtube.com/watch?v=video000003"]
     assert v1_urls == ["https://youtube.com/watch?v=video000002"]
+
+
+def test_get_source_key():
+    # Various representations of the same video
+    urls = [
+        "https://www.youtube.com/watch?v=kb95KGOUZ48&list=PLNVE_O4kpEJgr50ASEwQLNBgTEthsBw-W&index=114",
+        "https://www.youtube.com/watch?v=kb95KGOUZ48&list=PLNVE_O4kpEJgr50ASEwQLNBgTEthsBw-W&index=115",
+        "https://youtu.be/kb95KGOUZ48",
+        "https://www.youtube.com/shorts/kb95KGOUZ48",
+        "video https://www.youtube.com/watch?v=kb95KGOUZ48",
+        "kb95KGOUZ48",
+    ]
+    for url in urls:
+        assert get_source_key(url) == "video:kb95KGOUZ48"
+
+    # Playlists
+    assert get_source_key("https://www.youtube.com/playlist?list=PL12345") == "playlist:PL12345"
+    assert get_source_key("playlist https://www.youtube.com/watch?v=xyz&list=PL12345") == "playlist:PL12345"
+
+    # Comments and empty lines
+    assert get_source_key("# some comment") is None
+    assert get_source_key("   ") is None
+
+
+def test_is_playlist_source():
+    assert not is_playlist_source("auto", "https://www.youtube.com/watch?v=kb95KGOUZ48&list=PL123")
+    assert not is_playlist_source("video", "https://www.youtube.com/playlist?list=PL123")
+    assert is_playlist_source("playlist", "https://www.youtube.com/watch?v=kb95KGOUZ48&list=PL123")
+    assert is_playlist_source("auto", "https://www.youtube.com/playlist?list=PL123")
+
+
+def test_deduplicate_source_lines():
+    lines = [
+        "# Initial comment",
+        "https://www.youtube.com/watch?v=kb95KGOUZ48&list=PL123&index=114",
+        "",
+        "# Next section",
+        "https://www.youtube.com/watch?v=kb95KGOUZ48&list=PL123&index=115",
+        "https://youtu.be/uniqueVid01",
+        "https://www.youtube.com/watch?v=uniqueVid01",
+    ]
+
+    deduped, dups = deduplicate_source_lines(lines)
+
+    assert len(dups) == 2
+    assert "https://www.youtube.com/watch?v=kb95KGOUZ48&list=PL123&index=115" in dups
+    assert "https://www.youtube.com/watch?v=uniqueVid01" in dups
+
+    # Ensure comments and empty lines are preserved in order
+    assert deduped == [
+        "# Initial comment",
+        "https://www.youtube.com/watch?v=kb95KGOUZ48&list=PL123&index=114",
+        "",
+        "# Next section",
+        "https://youtu.be/uniqueVid01",
+    ]
+
+
+def test_deduplicate_source_file():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        file_path = Path(tmpdir) / "sources.txt"
+        file_path.write_text(
+            "# Test file\n"
+            "https://www.youtube.com/watch?v=kb95KGOUZ48&index=1\n"
+            "https://www.youtube.com/watch?v=kb95KGOUZ48&index=2\n"
+            "https://youtu.be/otherVid001\n",
+            encoding="utf-8",
+        )
+
+        removed_count, dups = deduplicate_source_file(file_path, in_place=True)
+        assert removed_count == 1
+        assert len(dups) == 1
+
+        updated_content = file_path.read_text(encoding="utf-8").splitlines()
+        assert len(updated_content) == 3
+        assert updated_content[0] == "# Test file"
+        assert "index=1" in updated_content[1]
+        assert "otherVid001" in updated_content[2]
+
 

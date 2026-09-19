@@ -8,6 +8,11 @@ from .manifest import rebuild
 from .pipeline import Pipeline
 from .sources import (
     append_processed_sources,
+    canonicalize_source,
+    deduplicate_source_file,
+    deduplicate_source_lines,
+    get_source_key,
+    is_playlist_source,
     is_source_processed,
     load_processed_ids,
     parse_shard,
@@ -73,7 +78,12 @@ def process_sources(
 ):
     cfg = load_config(config)
     shard_tuple = parse_shard(shard)
-    Pipeline(cfg, force=force, profile=profile, shard=shard_tuple).process_sources_file(sources)
+    usable = _usable_source_lines(sources)
+    deduped, duplicates = deduplicate_source_lines(usable)
+    if duplicates:
+        typer.echo(f"Skipped {len(duplicates)} duplicate source(s) within {sources.name}.")
+    job_path = _write_filtered_sources(sources, deduped) if duplicates else sources
+    Pipeline(cfg, force=force, profile=profile, shard=shard_tuple).process_sources_file(job_path)
     typer.echo(f"Done: {cfg.workspace / 'manifests' / 'accepted.csv'}")
 
 
@@ -160,29 +170,49 @@ def process_both_sources(
 
     def _is_unprocessed(line: str) -> bool:
         url = _source_url(line)
-        # Playlist URLs might contain new items, so let downloader/pipeline inspect them item-by-item
-        is_playlist = "list=" in url or "/playlist" in url or line.strip().lower().startswith("playlist ")
-        if is_playlist:
+        parts = line.split(maxsplit=1)
+        mode = parts[0].lower() if len(parts) == 2 and parts[0].lower() in {"video", "playlist"} else "auto"
+        if is_playlist_source(mode, url):
             return True
         return not is_source_processed(url, processed_ids)
 
     no_voiceover_path = Path("sources_no_voiceover.txt")
     voiceover_path = Path("sources_voiceover.txt")
 
+    # 1. Deduplicate voiceover internally
     usable_voiceover = _usable_source_lines(voiceover_path)
-    filtered_voiceover_lines = [l for l in usable_voiceover if _is_unprocessed(l)]
-    skipped_processed_vo = len(usable_voiceover) - len(filtered_voiceover_lines)
+    deduped_vo_lines, dups_vo = deduplicate_source_lines(usable_voiceover)
+    skipped_dup_vo = len(dups_vo)
 
+    filtered_voiceover_lines = [l for l in deduped_vo_lines if _is_unprocessed(l)]
+    skipped_processed_vo = len(deduped_vo_lines) - len(filtered_voiceover_lines)
+
+    # 2. Track keys seen in voiceover to deduplicate against no_voiceover
+    seen_vo_keys = {get_source_key(l) for l in deduped_vo_lines if get_source_key(l)}
+
+    # 3. Deduplicate no_voiceover internally AND against voiceover
     usable_no_voiceover = _usable_source_lines(no_voiceover_path)
-    voiceover_urls = {_source_url(line) for line in usable_voiceover}
-    non_dup_no_voiceover = [
-        line for line in usable_no_voiceover
-        if _source_url(line) not in voiceover_urls
-    ]
-    skipped_duplicates = len(usable_no_voiceover) - len(non_dup_no_voiceover)
+    deduped_nvo_lines, dups_nvo = deduplicate_source_lines(
+        usable_no_voiceover, seen_keys=set(seen_vo_keys)
+    )
 
-    filtered_no_voiceover_lines = [l for l in non_dup_no_voiceover if _is_unprocessed(l)]
-    skipped_processed_nvo = len(non_dup_no_voiceover) - len(filtered_no_voiceover_lines)
+    # Distinguish internal duplicates in nvo vs cross-file duplicates with vo
+    internal_nvo_keys: set[str] = set()
+    skipped_internal_dup_nvo = 0
+    skipped_cross_duplicates = 0
+    for l in usable_no_voiceover:
+        k = get_source_key(l)
+        if not k:
+            continue
+        if k in seen_vo_keys:
+            skipped_cross_duplicates += 1
+        elif k in internal_nvo_keys:
+            skipped_internal_dup_nvo += 1
+        else:
+            internal_nvo_keys.add(k)
+
+    filtered_no_voiceover_lines = [l for l in deduped_nvo_lines if _is_unprocessed(l)]
+    skipped_processed_nvo = len(deduped_nvo_lines) - len(filtered_no_voiceover_lines)
 
     no_voiceover_job_path = (
         _write_filtered_sources(no_voiceover_path, filtered_no_voiceover_lines)
@@ -199,17 +229,23 @@ def process_both_sources(
         ("voiceover", voiceover_job_path),
     ]
 
+    if skipped_dup_vo > 0:
+        typer.echo(f"Skipped {skipped_dup_vo} duplicate source(s) within sources_voiceover.txt.")
+
+    if skipped_internal_dup_nvo > 0:
+        typer.echo(f"Skipped {skipped_internal_dup_nvo} duplicate source(s) within sources_no_voiceover.txt.")
+
+    if skipped_cross_duplicates > 0:
+        typer.echo(
+            f"Skipped {skipped_cross_duplicates} duplicate no_voiceover source(s) because they also "
+            "exist in sources_voiceover.txt."
+        )
+
     total_skipped_processed = skipped_processed_vo + skipped_processed_nvo
     if total_skipped_processed > 0:
         typer.echo(
             f"Skipped {total_skipped_processed} source(s) because they were already processed "
             f"({cfg.sources.processed_file})."
-        )
-
-    if skipped_duplicates:
-        typer.echo(
-            f"Skipped {skipped_duplicates} duplicate no_voiceover source(s) because they also "
-            "exist in sources_voiceover.txt."
         )
 
     ran = []
@@ -387,5 +423,67 @@ def inspect(config:Annotated[Path|None,typer.Option("--config","-c")]=None,
         status="ACCEPT" if r["accepted"].lower()=="true" else "REJECT"
         typer.echo(f"[{status}] {r['item_id']}/{r['segment_id']} "
                    f"ASR={r['asr_confidence']} ASD={r['active_speaker_score']} | {r['text'][:70]}")
+
+@app.command("dedup-sources")
+def dedup_sources(
+    files: Annotated[
+        list[Path] | None,
+        typer.Argument(help="Specific source files to deduplicate"),
+    ] = None,
+    check: Annotated[
+        bool,
+        typer.Option("--check", help="Check for duplicates without modifying files"),
+    ] = False,
+    canonicalize: Annotated[
+        bool,
+        typer.Option("--canonicalize", help="Clean URLs to standard YouTube format"),
+    ] = False,
+):
+    """Find and remove duplicate video/playlist entries from source text files."""
+    target_files = files or [
+        Path("sources_no_voiceover.txt"),
+        Path("sources_voiceover.txt"),
+        Path("sources.txt"),
+    ]
+
+    total_removed = 0
+    for path in target_files:
+        if not path.exists():
+            continue
+
+        count, dups = deduplicate_source_file(
+            path,
+            in_place=not check,
+            canonicalize=canonicalize,
+        )
+        total_removed += count
+        if count > 0:
+            verb = "found" if check else "removed"
+            typer.echo(f"[{path.name}] {count} duplicate(s) {verb}:")
+            for d in dups:
+                k = get_source_key(d) or ""
+                typer.echo(f"  - {d} ({k})")
+        else:
+            typer.echo(f"[{path.name}] OK (no internal duplicates)")
+
+    # Cross-file check
+    nvo_path = Path("sources_no_voiceover.txt")
+    vo_path = Path("sources_voiceover.txt")
+    if nvo_path.exists() and vo_path.exists():
+        usable_vo = _usable_source_lines(vo_path)
+        usable_nvo = _usable_source_lines(nvo_path)
+        vo_keys = {get_source_key(l): l for l in usable_vo if get_source_key(l)}
+        cross = []
+        for l in usable_nvo:
+            k = get_source_key(l)
+            if k and k in vo_keys:
+                cross.append((l, vo_keys[k]))
+        if cross:
+            typer.echo(
+                f"\n[Warning] {len(cross)} link(s) exist in BOTH sources_no_voiceover.txt and sources_voiceover.txt:"
+            )
+            for nvo_l, vo_l in cross:
+                typer.echo(f"  - {nvo_l} (in sources_voiceover.txt: {vo_l})")
+
 
 if __name__=="__main__": app()

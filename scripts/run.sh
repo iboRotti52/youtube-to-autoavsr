@@ -10,7 +10,7 @@ if [[ ! -x ".venv/bin/yt2avsr" ]]; then
   exit 1
 fi
 
-KNOWN_COMMANDS="^(process|process-playlist|process-local|process-sources|process-both-sources|check-downloader|setup-external|setup-retinaface|setup-whisper|push-data|pull-data|sync-processed|manifest|inspect)$"
+KNOWN_COMMANDS="^(process|process-playlist|process-local|process-sources|process-both-sources|check-downloader|setup-external|setup-retinaface|setup-whisper|push-data|pull-data|sync-processed|manifest|inspect|dedup-sources)$"
 
 if [[ "$#" -eq 0 ]]; then
   exec ".venv/bin/yt2avsr" process-both-sources --config configs/default.yaml

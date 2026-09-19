@@ -2,3 +2,34 @@
 # Bu listedeki videolar tekrar indirilmez ve işlenmez (mükerrer indirme ve işlemeyi önler).
 # Format: YouTube Video URL veya Video ID (satır başına bir tane)
 #
+# KUTUPLAŞMA ve POST-TRUTH
+https://www.youtube.com/watch?v=6RBn0IVd3J4
+# Yabancılar İçin Türkçe A1 (1. Bölüm) | Türkçe'de Selamlama ve Temel Günlük İfadeler
+https://www.youtube.com/watch?v=6rVFTG4dU8Q
+# Yabancılar İçin Türkçe A1 (2. Bölüm) | Sayılar ve Telefon Numarası Okuma
+https://www.youtube.com/watch?v=85eQE_7Q42M
+# YKS'yi Hacklemek(DGS): Mezuna Kalma
+https://www.youtube.com/watch?v=AH3xXKTZllo
+# Yabancılar İçin Türkçe A1 (6. Bölüm) | Aile Üyeleri ve İyelik Eklerine Giriş
+https://www.youtube.com/watch?v=CHLK5VPdSaM
+# İTÜ'nün Görünmeyen Yüzü
+https://www.youtube.com/watch?v=IMrviWiYTMQ
+# Güney Korelilerin Psikolojisi Neden Bozuk?
+https://www.youtube.com/watch?v=MCjBZZKHMIg
+# Yabancılar İçin Türkçe A1 (5. Bölüm) | Türkçe'de Günler, Aylar ve Mevsimler
+https://www.youtube.com/watch?v=OSAD_bx3AE8
+# Yapay Zeka Sonrası Yazılımcılık: Geleceğin Mesleği mi, Yoksa Sonu mu?
+https://www.youtube.com/watch?v=Rc9eWjo0_r0
+# Eski Usül Yazılımcılık Bitti: Yeni Usül Yazılımcılık Başladı
+https://www.youtube.com/watch?v=huwvvvYt06w
+# "Hititler Türk müdür?" : Cevat Şakir ve Mavi Anadoluculuk Üzerine
+https://www.youtube.com/watch?v=qqZyHdbjdwA
+# Yapay Zeka Üzerine #ai #yapayzeka
+https://www.youtube.com/watch?v=rmbj5LqNKWs
+# Üniversite Tercihleri ve Lisans Eğitimi
+https://www.youtube.com/watch?v=szxWQTNNCho
+# Yabancılar İçin Türkçe A1 (3. Bölüm) | Çoğul Eki, Kişi ve İşaret Zamirleri
+https://www.youtube.com/watch?v=tLL1l2x2XBw
+# İnsan Neden Kutsal Zaman ve Mekâna İhtiyaç Duyar?
+https://www.youtube.com/watch?v=yRv-y6Yg5kw
+https://www.youtube.com/watch?v=LF0L-T-EDQI

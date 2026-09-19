@@ -12,7 +12,9 @@ external/
 .env
 *.token
 hf_token*
-*.egg-info/ # gereksiz build klasörünü hariç tut
+# gereksiz build klasörünü hariç tut
+*.egg-info/
+*.egg-info
 .*.filtered.txt
 *.tmp
 .Rhistory
