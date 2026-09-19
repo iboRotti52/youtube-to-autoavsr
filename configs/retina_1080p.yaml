@@ -1,0 +1,13 @@
+# Modal & High-Performance GPU Preset:
+# Official Auto-AVSR RetinaFace face/landmark detector + Full 1080p video quality.
+extends: default.yaml
+
+download:
+  format: "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
+
+normalization:
+  max_height: 1080
+
+auto_avsr:
+  detector: retinaface
+  device: auto

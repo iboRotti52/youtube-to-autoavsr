@@ -118,6 +118,41 @@ Bu ayar:
 RetinaFace daha fazla RAM ve islem suresi kullanir. Mac CPU'da varsayilan
 `ytavsr` komutu yani MediaPipe onerilir.
 
+## Modal ile Bulutta GPU İşleme (RetinaFace + 1080p)
+
+Bilgisayarınızı meşgul etmeden ve Mac CPU'suyla uğraşmadan **RetinaFace + 1080p** resmi Auto-AVSR akışını sunucusuz NVIDIA T4 GPU üzerinde çalıştırmak için **Modal** entegrasyonu kullanılır.
+
+> Modal her kullanıcıya **aylık 30$ ücretsiz GPU kredisi** sağlar. Ekipteki her arkadaşınız kendi kişisel Modal hesabı üzerinden çalışabilir.
+
+### 1. Ön Koşul: Hugging Face Girişi (Bir Kez)
+İşlenen kliplerin doğrudan Hugging Face deposuna aktarılabilmesi için bilgisayarınızda oturum açılmış olmalıdır:
+```bash
+huggingface-cli login
+```
+*(Token'ınız yoksa: [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) adresinden 'Write' yetkili bir token alın).*
+
+### 2. Modal Kurulumu (Bir Kez)
+```bash
+pip install modal
+modal setup
+```
+
+### 3. Çalıştırma
+```bash
+# Listedeki tüm bekleyen videoları bulut GPU'sunda işle ve HF'ye gönder:
+ytavsr modal
+
+# Ekip arkadaşlarıyla çakışmasız paralel çalışma:
+ytavsr modal --shard 0/3
+ytavsr modal --shard 1/3
+ytavsr modal --shard 2/3
+
+# Tek video test etmek:
+ytavsr modal --url "https://www.youtube.com/watch?v=VIDEO_ID"
+```
+Üretilen 96×96 ağız ROI videoları (`mouth.mp4`), Whisper `large-v3-turbo` metinleri ve kalite manifestoları doğrudan Hugging Face deposuna yüklenir; ev/ofis internetinizin yükleme kotası ve yerel diskiniz harcanmaz.
+
+
 ## Bastan Kurulum: macOS / Linux
 
 ### 1. Projeyi indir

@@ -212,6 +212,73 @@ klasörlerine görecelidir.
 
 ---
 
+## Bölüm 5 — Modal ile Bulutta GPU İşleme (RetinaFace + 1080p)
+
+Mac veya dizüstü bilgisayarlarda CPU ile **RetinaFace** çalıştırmak çok yavaş kalabilir. Resmi Auto-AVSR kalitesinde 1080p video ve RetinaFace dudak takibini en hızlı şekilde yapmak için **Modal** (modal.com) entegrasyonunu kullanabilirsiniz.
+
+> Modal her kullanıcıya **aylık 30$ ücretsiz GPU kredisi** verir. Ekipteki herkes kendi kişisel Modal hesabını bağlayarak kendi GPU kotasıyla işleme yapabilir.
+
+### 5.1 ÖNEMLİ ÖN KOŞUL: Hugging Face Girişi Yapın
+Modal'da işlenen kliplerin doğrudan ortak depoya yüklenebilmesi için bilgisayarınızda Hugging Face oturumunuzun açık olması **şarttır**:
+
+1. [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) adresine gidin.
+2. **Write** yetkili bir token oluşturun ve kopyalayın.
+3. Terminalde çalıştırıp yapıştırın:
+   ```bash
+   huggingface-cli login
+   ```
+*(Bu işlemi bir kez yaptıktan sonra Modal token'ınızı yerelden otomatik okur).*
+
+### 5.2 Modal Kurulumu (Kişi Başı Sadece 1 Kez)
+
+1. [modal.com](https://modal.com) adresine gidin ve GitHub hesabınızla ücretsiz kaydolun.
+2. Terminalinizde Modal paketini kurun:
+   ```bash
+   pip install modal
+   ```
+3. Hesabınızı terminale bağlayın:
+   ```bash
+   modal setup
+   ```
+   *(Açılan tarayıcı penceresinde onay vermeniz yeterlidir).*
+
+### 5.3 Videoları Modal GPU'sunda İşleme
+
+Artık tüm indirme, Whisper transkripsiyonu, 1080p RetinaFace ağız kesimi ve Hugging Face'e yükleme işlemleri bulutta NVIDIA T4 GPU üzerinde gerçekleşir:
+
+```bash
+# Kaynak dosyalarındaki (sources_*.txt) tüm bekleyen videoları işle:
+ytavsr modal
+
+# veya doğrudan Modal CLI ile:
+modal run modal_app.py
+```
+
+#### Ekiple Çakışmasız Paralel Çalışma (Sharding):
+Aynı anda 3 kişi çalışıyorsanız listeyi 3 parçaya bölerek çalıştırın:
+- 1. Kişi: `ytavsr modal --shard 0/3`
+- 2. Kişi: `ytavsr modal --shard 1/3`
+- 3. Kişi: `ytavsr modal --shard 2/3`
+
+#### Tek Video veya Özel Seçenekler:
+```bash
+# Tek bir videoyu bulut GPU'sunda test etmek:
+ytavsr modal --url "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# Dış ses / dublaj içeren bir video için:
+ytavsr modal --url "https://www.youtube.com/watch?v=VIDEO_ID" --voiceover
+
+# Klipleri sadece Hugging Face'e atmakla kalmayıp yerel bilgisayarınıza da indirmek için:
+ytavsr modal --download-local
+```
+
+### 5.4 İşlem Sonrası Ne Olur?
+1. Modal'daki GPU container'ı işlenen klipleri doğrudan ortak Hugging Face dataset'ine (`iboRotti/avsr-tr-dataset`) yükler (`data/<kullanıcı-adınız>/...`).
+2. Hugging Face'teki ve yerelinizdeki `processed_sources.txt` listesi otomatik güncellenir.
+3. Diğer ekip arkadaşlarınız işlem başlattığında bu videolar otomatik atlanır (mükerrer işleme engellenir).
+
+---
+
 ## Sık sorulanlar
 
 **Neden GitHub'a veri koymuyoruz?** GitHub kod içindir; büyük video/ses için değil.

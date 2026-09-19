@@ -32,8 +32,53 @@ VALID_STATUSES = ("accepted", "review", "rejected")
 
 
 def _get_token(token: str | None) -> str | None:
-    """Explicit token > HF_TOKEN env var > cached CLI login (returns None)."""
-    return token or os.environ.get("HF_TOKEN") or None
+    """Explicit token > HF_TOKEN env var > cached CLI login."""
+    if token and str(token).strip():
+        return str(token).strip()
+    if "HF_TOKEN" in os.environ and os.environ["HF_TOKEN"].strip():
+        return os.environ["HF_TOKEN"].strip()
+    try:
+        import huggingface_hub
+
+        tok = huggingface_hub.get_token()
+        if tok and str(tok).strip():
+            return str(tok).strip()
+    except Exception:
+        pass
+    return None
+
+
+def check_hf_login_or_warn(token: str | None = None, required: bool = True) -> tuple[str | None, str | None]:
+    """Check if Hugging Face token is present. If missing and required, prints helpful instructions."""
+    tok = _get_token(token)
+    if not tok:
+        if required:
+            print(
+                "\n"
+                "================================================================================\n"
+                "⚠️   HUGGING FACE GİRİŞİ BULUNAMADI!\n"
+                "================================================================================\n"
+                "İşlenen 1080p ve RetinaFace kliplerinin ortak depoya yüklenebilmesi için\n"
+                "önce Hugging Face girişi yapmanız gerekmektedir.\n\n"
+                "Lütfen şu adımları uygulayın:\n"
+                "  1. https://huggingface.co/settings/tokens adresinden 'Write' yetkili bir token alın.\n"
+                "  2. Terminalinizde şu komutu çalıştırıp token'ı yapıştırın:\n"
+                "       huggingface-cli login\n\n"
+                "Alternatif olarak terminal oturumunuza token'ı tanımlayabilirsiniz:\n"
+                "  export HF_TOKEN=\"hf_...\"\n\n"
+                "(Eğer HF'ye yükleme yapmadan sadece yerel/test çalıştırmak isterseniz: --no-push)\n"
+                "================================================================================\n",
+                flush=True,
+            )
+        return None, None
+    try:
+        from huggingface_hub import HfApi
+
+        info = HfApi(token=tok).whoami()
+        return tok, _slug(info.get("name") or "unknown")
+    except Exception:
+        return tok, None
+
 
 
 def _slug(name: str) -> str:

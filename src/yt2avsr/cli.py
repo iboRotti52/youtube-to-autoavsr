@@ -592,4 +592,71 @@ def dedup_sources(
                 typer.echo(f"  - {nvo_l} (in sources_voiceover.txt: {vo_l})")
 
 
+@app.command("modal", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def modal_cmd(
+    ctx: typer.Context,
+    shard: Annotated[str | None, typer.Option("--shard", help="Shard index/total, e.g. 0/3")] = None,
+    url: Annotated[str | None, typer.Option("--url", help="Process single YouTube URL")] = None,
+    voiceover: Annotated[bool, typer.Option("--voiceover", help="Mark single URL as voiceover")] = False,
+    no_push: Annotated[bool, typer.Option("--no-push", help="Do not push clips to Hugging Face")] = False,
+    limit: Annotated[int, typer.Option("--limit", help="Max videos to process (0 = all)")] = 0,
+    gpu: Annotated[str, typer.Option("--gpu", help="GPU type on Modal (T4, A10G, etc.)")] = "T4",
+    download_local: Annotated[bool, typer.Option("--download-local", help="Download output clips to local data folder")] = False,
+    hf_token: Annotated[str | None, typer.Option("--hf-token", help="Hugging Face write token")] = None,
+    contributor: Annotated[str | None, typer.Option("--contributor", help="HF contributor folder name")] = None,
+    config: Annotated[str, typer.Option("--config", "-c", help="Config file to use")] = "configs/retina_1080p.yaml",
+):
+    """Run RetinaFace + 1080p processing in the cloud on your own Modal GPU account."""
+    from .cloud import check_hf_login_or_warn
+
+    # 1. Check Modal installation
+    if shutil.which("modal") is None:
+        typer.secho("\n❌ Modal CLI bulunamadı!", fg=typer.colors.RED, bold=True)
+        typer.echo(
+            "Ekipteki herkesin kendi Modal hesabında GPU (RetinaFace + 1080p) ile çalışabilmesi için:\n"
+            "  1. modal.com adresinde ücretsiz hesap açın (aylık 30$ ücretsiz kredi)\n"
+            "  2. Terminalde: pip install modal\n"
+            "  3. Terminalde: modal setup (tarayıcıdan hesabınızı bağlayın)\n"
+        )
+        raise typer.Exit(1)
+
+    # 2. Check Hugging Face authentication
+    resolved_tok, detected_user = check_hf_login_or_warn(token=hf_token, required=(not no_push))
+    if not resolved_tok and not no_push:
+        typer.secho("Modal işlemi Hugging Face girişi yapılmadığı için başlatılmadı.", fg=typer.colors.RED)
+        typer.echo("Hugging Face girişi yaptıktan sonra tekrar deneyin veya '--no-push' ekleyin.\n")
+        raise typer.Exit(1)
+
+    # 3. Build command
+    cmd = ["modal", "run", "modal_app.py"]
+    if shard:
+        cmd.extend(["--shard", shard])
+    if url:
+        cmd.extend(["--url", url])
+    if voiceover:
+        cmd.append("--voiceover")
+    if no_push:
+        cmd.append("--no-push")
+    if limit > 0:
+        cmd.extend(["--limit", str(limit)])
+    if gpu != "T4":
+        cmd.extend(["--gpu", gpu])
+    if download_local:
+        cmd.append("--download-local")
+    if resolved_tok:
+        cmd.extend(["--hf-token", resolved_tok])
+    if contributor or detected_user:
+        cmd.extend(["--contributor", contributor or detected_user or "unknown"])
+    if config != "configs/retina_1080p.yaml":
+        cmd.extend(["--config", config])
+
+    if ctx.args:
+        cmd.extend(ctx.args)
+
+    typer.secho(f"\n🚀 Modal GPU görevi başlatılıyor: {' '.join(cmd)}", fg=typer.colors.CYAN, bold=True)
+    res = subprocess.run(cmd)
+    raise typer.Exit(res.returncode)
+
+
 if __name__=="__main__": app()
+

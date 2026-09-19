@@ -27,6 +27,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<9", "ruff>=0.9,<1"]
+modal = ["modal>=0.60"]
 
 [project.scripts]
 yt2avsr = "yt2avsr.cli:app"
