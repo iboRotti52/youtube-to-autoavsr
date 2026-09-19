@@ -183,16 +183,20 @@ class Pipeline:
         self._process_item(item); rebuild(self.workspace); return item
 
     def _process_item(self, item):
+        item_start = time.perf_counter()
         iid = item["id"]
         normalized = self.workspace/"normalized"/iid/"normalized.mp4"
         words_path = self.workspace/"transcripts"/iid/"words.json"
         segments_path = self.workspace/"transcripts"/iid/"segments.json"
+        
+        t0 = time.perf_counter()
         self._stage(
             iid,
             "normalize",
             lambda: normalize(item["source"], normalized, self.cfg.normalization),
             outputs=[normalized],
         )
+        t_normalize = time.perf_counter() - t0
 
         def transcript():
             if item.get("subtitle_path"):
@@ -206,7 +210,10 @@ class Pipeline:
                 transcribe(normalized, words_path, self.cfg.language, self.cfg.transcription)
             else:
                 raise RuntimeError("No manual subtitle and Whisper fallback disabled")
+        
+        t0 = time.perf_counter()
         self._stage(iid, "transcribe", transcript, outputs=[words_path])
+        t_transcribe = time.perf_counter() - t0
 
         def segment():
             payload = read_json(words_path)
@@ -236,12 +243,15 @@ class Pipeline:
             for row in segments:
                 row["transcript_source"] = payload.get("source", "unknown")
             write_json(segments_path, segments)
+            
+        t0 = time.perf_counter()
         self._stage(
             iid,
             f"segment_v4_{self.profile.name}",
             segment,
             outputs=[segments_path],
         )
+        t_segment = time.perf_counter() - t0
 
         segments = read_json(segments_path)
         if not self.cfg.active_speaker.enabled and segments:
@@ -251,6 +261,7 @@ class Pipeline:
             except Exception as exc:
                 print(f"[warning] Pre-caching landmarks skipped: {exc}", flush=True)
 
+        t0_clips = time.perf_counter()
         workers = getattr(self.cfg, "processing", None)
         max_workers = workers.max_workers if workers else 4
         if max_workers > 1 and len(segments) > 1:
@@ -266,6 +277,50 @@ class Pipeline:
         else:
             for seg in segments:
                 self._process_segment(item, normalized, seg)
+        t_clips_total = time.perf_counter() - t0_clips
+        t_item_total = time.perf_counter() - item_start
+
+        # Collect clip sub-stage timings
+        clip_metas = sorted((self.workspace / "clips" / iid).glob("*/metadata.json"))
+        extract_times = []
+        whisper_times = []
+        visual_times = []
+        crop_times = []
+        status_counts = {"accepted": 0, "review": 0, "rejected": 0}
+
+        for meta_p in clip_metas:
+            try:
+                m = read_json(meta_p)
+                st = m.get("quality_status", "unknown")
+                status_counts[st] = status_counts.get(st, 0) + 1
+                tm = m.get("timings", {})
+                if "extract_s" in tm: extract_times.append(tm["extract_s"])
+                if "whisper_s" in tm: whisper_times.append(tm["whisper_s"])
+                if "visual_s" in tm: visual_times.append(tm["visual_s"])
+                if "crop_s" in tm: crop_times.append(tm["crop_s"])
+            except Exception:
+                pass
+
+        n_clips = len(clip_metas)
+        sum_extract = sum(extract_times)
+        sum_whisper = sum(whisper_times)
+        sum_visual = sum(visual_times)
+        sum_crop = sum(crop_times)
+
+        print("\n" + "=" * 70, flush=True)
+        print(f"⏱️  TIMING BREAKDOWN for item: {iid} ({n_clips} clips)", flush=True)
+        print(f"  • Normalize:              {t_normalize:7.2f}s", flush=True)
+        print(f"  • Full Transcription:     {t_transcribe:7.2f}s", flush=True)
+        print(f"  • Segmentation:           {t_segment:7.2f}s", flush=True)
+        print(f"  • Clip Processing Total:  {t_clips_total:7.2f}s", flush=True)
+        if n_clips > 0:
+            print(f"      - Clip Extract:       {sum_extract:7.2f}s (avg: {sum_extract/n_clips:.3f}s)", flush=True)
+            print(f"      - Clip Whisper ASR:   {sum_whisper:7.2f}s (avg: {sum_whisper/n_clips:.3f}s)", flush=True)
+            print(f"      - Visual Quality:     {sum_visual:7.2f}s (avg: {sum_visual/n_clips:.3f}s)", flush=True)
+            print(f"      - Auto-AVSR Crop:     {sum_crop:7.2f}s (avg: {sum_crop/n_clips:.3f}s)", flush=True)
+        print(f"  • Decisions: accepted={status_counts.get('accepted', 0)}, review={status_counts.get('review', 0)}, rejected={status_counts.get('rejected', 0)}", flush=True)
+        print(f"  • Total Core Pipeline:    {t_item_total:7.2f}s", flush=True)
+        print("=" * 70 + "\n", flush=True)
 
     def _process_segment(self, item, normalized, segment):
         iid, sid = item["id"], segment["segment_id"]
@@ -278,8 +333,10 @@ class Pipeline:
 
         def build():
             out.mkdir(parents=True, exist_ok=True)
+            t0 = time.perf_counter()
             extract_clip(normalized, segment["start"], segment["end"],
                          source_clip, audio_clip, self.cfg.normalization)
+            t_extract = time.perf_counter() - t0
 
             original_text = segment["text"]
             label_text = original_text
@@ -292,13 +349,16 @@ class Pipeline:
                 "original_text": original_text,
                 "verified_text": None,
             }
+            t_whisper = 0.0
             if self.cfg.transcription.verify_clips:
+                t0 = time.perf_counter()
                 clip_words = transcribe(
                     audio_clip,
                     clip_words_path,
                     self.cfg.language,
                     self.cfg.transcription,
                 )
+                t_whisper = time.perf_counter() - t0
                 verified_text = words_to_text(clip_words)
                 similarity = transcript_similarity(original_text, verified_text)
                 asr_conf = words_confidence(clip_words)
@@ -319,6 +379,58 @@ class Pipeline:
 
             transcript_path.write_text(label_text+"\n", encoding="utf-8")
 
+            # Early deterministic rejection: if transcript or ASR confidence guarantees rejection,
+            # skip expensive MediaPipe FaceMesh and Auto-AVSR crop stages immediately.
+            deterministic_reject = False
+            deterministic_reasons = []
+            if not bool(label_text):
+                deterministic_reject = True
+                deterministic_reasons.append("empty_transcript")
+            if asr_conf < self.cfg.quality.min_asr_confidence:
+                deterministic_reject = True
+                deterministic_reasons.append("low_asr_confidence")
+            if (
+                transcript_check["status"] == "mismatch"
+                and self.cfg.transcription.clip_mismatch_status == "rejected"
+            ):
+                deterministic_reject = True
+                deterministic_reasons.append("transcript_mismatch")
+
+            if deterministic_reject:
+                for path in (source_clip, audio_clip, speaker_clip, mouth_clip, transcript_path):
+                    if path.exists():
+                        path.unlink()
+                meta = item["metadata"]
+                write_json(metadata_path, {
+                    "item_id": iid, "segment_id": sid,
+                    "video_path": "", "active_speaker_path": "",
+                    "mouth_path": "", "audio_path": "",
+                    "text": label_text, "original_text": original_text,
+                    "start": segment["start"],
+                    "end": segment["end"], "duration": segment["duration"],
+                    "source_url": meta.get("source_url"), "title": meta.get("title"),
+                    "channel": meta.get("channel"),
+                    "transcript_source": transcript_source,
+                    "transcript_check": transcript_check,
+                    "asr_confidence": asr_conf,
+                    "active_speaker_score": 1.0,
+                    "face_coverage": 1.0,
+                    "sharpness": 0.0,
+                    "source_profile": self.profile.name,
+                    "quality_status": "rejected",
+                    "accepted": False,
+                    "visual_quality": None,
+                    "early_rejected": True,
+                    "reasons": deterministic_reasons,
+                    "timings": {
+                        "extract_s": round(t_extract, 3),
+                        "whisper_s": round(t_whisper, 3),
+                        "visual_s": 0.0,
+                        "crop_s": 0.0,
+                    },
+                })
+                return
+
             if self.cfg.active_speaker.enabled:
                 asd = select_active_speaker(source_clip, speaker_clip,
                     self.cfg.active_speaker, self.cfg.normalization.fps)
@@ -332,6 +444,7 @@ class Pipeline:
             # The ONLY profile difference: voiceover verifies lip-sync (rejects
             # segments whose audio doesn't match the visible mouth = external voice),
             # no_voiceover relaxes that check.
+            t0 = time.perf_counter()
             visual = (
                 analyze_visual_quality(
                     crop_input, audio_clip, self.cfg.visual_quality,
@@ -339,6 +452,7 @@ class Pipeline:
                 )
                 if self.cfg.visual_quality.enabled else None
             )
+            t_visual = time.perf_counter() - t0
 
             visual_status = visual.status if visual is not None else "accepted"
             reasons = list(visual.reasons) if visual is not None else []
@@ -363,11 +477,13 @@ class Pipeline:
                     visual.status = "rejected"
                     visual.reasons = reasons
 
+            t_crop = 0.0
             if visual_status == "rejected":
                 crop_sharpness = 0.0
                 mouth_path_value = ""
             else:
                 try:
+                    t0 = time.perf_counter()
                     crop = crop_with_official_auto_avsr(
                         crop_input,
                         mouth_clip,
@@ -377,6 +493,7 @@ class Pipeline:
                             float(segment["start"]) if crop_input == source_clip else None
                         ),
                     )
+                    t_crop = time.perf_counter() - t0
                     crop_sharpness = crop.sharpness
                     mouth_path_value = str(mouth_clip)
                 except NoUsableFaceError:
@@ -447,6 +564,12 @@ class Pipeline:
                 "quality_status": quality_status,
                 "accepted": accepted,
                 "visual_quality": visual.to_dict() if visual is not None else None,
+                "timings": {
+                    "extract_s": round(t_extract, 3),
+                    "whisper_s": round(t_whisper, 3),
+                    "visual_s": round(t_visual, 3),
+                    "crop_s": round(t_crop, 3),
+                },
             })
         self._stage(key, f"clip_v8_transcript_check_{self.profile.name}", build)
 

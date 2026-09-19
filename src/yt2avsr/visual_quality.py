@@ -23,13 +23,14 @@ class VisualQualityResult:
     status: str
     mouth_visible_ratio: float
     scene_cut_ratio: float
-    static_speech_ratio: float
-    speech_mouth_motion_ratio: float
-    lip_sync_correlation: float
-    mouth_opening_correlation: float
+    static_speech_ratio: float | None
+    speech_mouth_motion_ratio: float | None
+    lip_sync_correlation: float | None
+    mouth_opening_correlation: float | None
     max_missing_run_seconds: float
     unstable_landmark_ratio: float
     reasons: list[str]
+    lip_sync_checked: bool = True
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -123,14 +124,17 @@ def analyze_visual_quality(
             reasons=["empty_video"],
         )
 
-    audio_active, audio_energy = _read_audio_features(
-        audio_path, fps, len(frames), cfg.audio_activity_quantile
-    )
+    audio_active = None
+    audio_energy = None
+    if verify_lip_sync:
+        audio_active, audio_energy = _read_audio_features(
+            audio_path, fps, len(frames), cfg.audio_activity_quantile
+        )
 
     visible: list[bool] = []
-    mouth_motion = np.zeros(len(frames), dtype=np.float32)
-    mouth_shape_motion = np.zeros(len(frames), dtype=np.float32)
-    mouth_opening_motion = np.zeros(len(frames), dtype=np.float32)
+    mouth_motion = np.zeros(len(frames), dtype=np.float32) if verify_lip_sync else None
+    mouth_shape_motion = np.zeros(len(frames), dtype=np.float32) if verify_lip_sync else None
+    mouth_opening_motion = np.zeros(len(frames), dtype=np.float32) if verify_lip_sync else None
     unstable = np.zeros(len(frames), dtype=bool)
     cuts = np.zeros(len(frames), dtype=bool)
     previous_hsv = None
@@ -157,20 +161,22 @@ def analyze_visual_quality(
             if index % max(1, cfg.sample_every_n_frames) != 0:
                 visible.append(visible[-1] if visible else False)
                 if index > 0:
-                    mouth_motion[index] = mouth_motion[index - 1]
-                    mouth_shape_motion[index] = mouth_shape_motion[index - 1]
-                    mouth_opening_motion[index] = mouth_opening_motion[index - 1]
                     unstable[index] = unstable[index - 1]
+                    if verify_lip_sync:
+                        mouth_motion[index] = mouth_motion[index - 1]
+                        mouth_shape_motion[index] = mouth_shape_motion[index - 1]
+                        mouth_opening_motion[index] = mouth_opening_motion[index - 1]
                 continue
 
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             result = mesh.process(rgb)
             if not result.multi_face_landmarks:
                 visible.append(False)
-                previous_mouth = None
-                previous_mouth_shape = None
-                previous_mouth_opening = None
                 previous_geometry = None
+                if verify_lip_sync:
+                    previous_mouth = None
+                    previous_mouth_shape = None
+                    previous_mouth_opening = None
                 continue
 
             landmarks = result.multi_face_landmarks[0].landmark
@@ -195,10 +201,11 @@ def analyze_visual_quality(
             geometry_ok = inside and width >= 8 and height >= 3
             visible.append(geometry_ok)
             if not geometry_ok:
-                previous_mouth = None
-                previous_mouth_shape = None
-                previous_mouth_opening = None
                 previous_geometry = None
+                if verify_lip_sync:
+                    previous_mouth = None
+                    previous_mouth_shape = None
+                    previous_mouth_opening = None
                 continue
 
             if previous_geometry is not None:
@@ -206,42 +213,45 @@ def analyze_visual_quality(
                 unstable[index] = jump > cfg.landmark_jump_threshold
             previous_geometry = geometry
 
-            pad_x, pad_y = width * 0.35, height * 0.65
-            x1 = max(0, int(xs.min() - pad_x))
-            x2 = min(w, int(xs.max() + pad_x))
-            y1 = max(0, int(ys.min() - pad_y))
-            y2 = min(h, int(ys.max() + pad_y))
-            roi = frame[y1:y2, x1:x2]
+            # If lip-sync is not being verified (e.g. no_voiceover profile),
+            # skip all expensive mouth ROI cropping, grayscale resizing, absdiff, and shape distances.
+            if verify_lip_sync:
+                pad_x, pad_y = width * 0.35, height * 0.65
+                x1 = max(0, int(xs.min() - pad_x))
+                x2 = min(w, int(xs.max() + pad_x))
+                y1 = max(0, int(ys.min() - pad_y))
+                y2 = min(h, int(ys.max() + pad_y))
+                roi = frame[y1:y2, x1:x2]
 
-            if roi.size == 0:
-                visible[-1] = False
-                previous_mouth = None
-                previous_mouth_shape = None
-                previous_mouth_opening = None
-                continue
+                if roi.size == 0:
+                    visible[-1] = False
+                    previous_mouth = None
+                    previous_mouth_shape = None
+                    previous_mouth_opening = None
+                    continue
 
-            points = np.column_stack([xs, ys])
-            center = points.mean(axis=0)
-            mouth_shape = (points - center) / max(width, 1.0)
-            if previous_mouth_shape is not None:
-                mouth_shape_motion[index] = float(
-                    np.mean(np.linalg.norm(mouth_shape - previous_mouth_shape, axis=1))
-                )
-            previous_mouth_shape = mouth_shape
+                points = np.column_stack([xs, ys])
+                center = points.mean(axis=0)
+                mouth_shape = (points - center) / max(width, 1.0)
+                if previous_mouth_shape is not None:
+                    mouth_shape_motion[index] = float(
+                        np.mean(np.linalg.norm(mouth_shape - previous_mouth_shape, axis=1))
+                    )
+                previous_mouth_shape = mouth_shape
 
-            upper = landmarks[INNER_UPPER_LIP]
-            lower = landmarks[INNER_LOWER_LIP]
-            mouth_opening = abs((lower.y - upper.y) * h) / max(width, 1.0)
-            if previous_mouth_opening is not None:
-                mouth_opening_motion[index] = abs(mouth_opening - previous_mouth_opening)
-            previous_mouth_opening = mouth_opening
+                upper = landmarks[INNER_UPPER_LIP]
+                lower = landmarks[INNER_LOWER_LIP]
+                mouth_opening = abs((lower.y - upper.y) * h) / max(width, 1.0)
+                if previous_mouth_opening is not None:
+                    mouth_opening_motion[index] = abs(mouth_opening - previous_mouth_opening)
+                previous_mouth_opening = mouth_opening
 
-            gray = cv2.resize(cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY), (64, 32))
-            if previous_mouth is not None:
-                mouth_motion[index] = float(
-                    np.mean(cv2.absdiff(gray, previous_mouth))
-                ) / 255.0
-            previous_mouth = gray
+                gray = cv2.resize(cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY), (64, 32))
+                if previous_mouth is not None:
+                    mouth_motion[index] = float(
+                        np.mean(cv2.absdiff(gray, previous_mouth))
+                    ) / 255.0
+                previous_mouth = gray
     finally:
         mesh.close()
 
@@ -252,43 +262,49 @@ def analyze_visual_quality(
             visible_array, (0, len(frames) - len(visible_array)), constant_values=False
         )
 
-    speech_indices = audio_active & visible_array
-    static_speech = speech_indices & (mouth_motion < cfg.mouth_motion_floor)
-    moving_mouth_speech = speech_indices & (
-        (mouth_shape_motion >= cfg.mouth_shape_motion_floor)
-        | (mouth_opening_motion >= cfg.mouth_opening_motion_floor)
-    )
-
     mouth_visible_ratio = float(np.mean(visible_array))
     scene_cut_ratio = float(np.mean(cuts))
-    static_speech_ratio = (
-        float(np.sum(static_speech) / max(1, np.sum(speech_indices)))
-        if np.any(speech_indices) else 1.0
-    )
-    speech_mouth_motion_ratio = (
-        float(np.sum(moving_mouth_speech) / max(1, np.sum(speech_indices)))
-        if np.any(speech_indices) else 0.0
-    )
-    sync_mask = visible_array & (audio_energy > 0)
-    if np.sum(sync_mask) >= 3:
-        audio_values = audio_energy[sync_mask]
-        mouth_values = mouth_shape_motion[sync_mask]
-        opening_values = mouth_opening_motion[sync_mask]
-        if float(np.std(audio_values)) > 1e-6 and float(np.std(mouth_values)) > 1e-6:
-            lip_sync_correlation = float(np.corrcoef(audio_values, mouth_values)[0, 1])
-        else:
-            lip_sync_correlation = 0.0
-        if float(np.std(audio_values)) > 1e-6 and float(np.std(opening_values)) > 1e-6:
-            mouth_opening_correlation = float(
-                np.corrcoef(audio_values, opening_values)[0, 1]
-            )
-        else:
-            mouth_opening_correlation = 0.0
-    else:
-        lip_sync_correlation = 0.0
-        mouth_opening_correlation = 0.0
     max_missing_run_seconds = _longest_false_run(visible_array.tolist()) / fps
     unstable_landmark_ratio = float(np.mean(unstable[visible_array])) if np.any(visible_array) else 1.0
+
+    static_speech_ratio = None
+    speech_mouth_motion_ratio = None
+    lip_sync_correlation = None
+    mouth_opening_correlation = None
+
+    if verify_lip_sync:
+        speech_indices = audio_active & visible_array
+        static_speech = speech_indices & (mouth_motion < cfg.mouth_motion_floor)
+        moving_mouth_speech = speech_indices & (
+            (mouth_shape_motion >= cfg.mouth_shape_motion_floor)
+            | (mouth_opening_motion >= cfg.mouth_opening_motion_floor)
+        )
+        static_speech_ratio = (
+            float(np.sum(static_speech) / max(1, np.sum(speech_indices)))
+            if np.any(speech_indices) else 1.0
+        )
+        speech_mouth_motion_ratio = (
+            float(np.sum(moving_mouth_speech) / max(1, np.sum(speech_indices)))
+            if np.any(speech_indices) else 0.0
+        )
+        sync_mask = visible_array & (audio_energy > 0)
+        if np.sum(sync_mask) >= 3:
+            audio_values = audio_energy[sync_mask]
+            mouth_values = mouth_shape_motion[sync_mask]
+            opening_values = mouth_opening_motion[sync_mask]
+            if float(np.std(audio_values)) > 1e-6 and float(np.std(mouth_values)) > 1e-6:
+                lip_sync_correlation = float(np.corrcoef(audio_values, mouth_values)[0, 1])
+            else:
+                lip_sync_correlation = 0.0
+            if float(np.std(audio_values)) > 1e-6 and float(np.std(opening_values)) > 1e-6:
+                mouth_opening_correlation = float(
+                    np.corrcoef(audio_values, opening_values)[0, 1]
+                )
+            else:
+                mouth_opening_correlation = 0.0
+        else:
+            lip_sync_correlation = 0.0
+            mouth_opening_correlation = 0.0
 
     # Lip/mouth visibility, scene-cut and occlusion checks run in BOTH profiles.
     accept_checks = [
@@ -345,11 +361,12 @@ def analyze_visual_quality(
         status=status,
         mouth_visible_ratio=round(mouth_visible_ratio, 5),
         scene_cut_ratio=round(scene_cut_ratio, 5),
-        static_speech_ratio=round(static_speech_ratio, 5),
-        speech_mouth_motion_ratio=round(speech_mouth_motion_ratio, 5),
-        lip_sync_correlation=round(lip_sync_correlation, 5),
-        mouth_opening_correlation=round(mouth_opening_correlation, 5),
+        static_speech_ratio=round(static_speech_ratio, 5) if static_speech_ratio is not None else None,
+        speech_mouth_motion_ratio=round(speech_mouth_motion_ratio, 5) if speech_mouth_motion_ratio is not None else None,
+        lip_sync_correlation=round(lip_sync_correlation, 5) if lip_sync_correlation is not None else None,
+        mouth_opening_correlation=round(mouth_opening_correlation, 5) if mouth_opening_correlation is not None else None,
         max_missing_run_seconds=round(max_missing_run_seconds, 3),
         unstable_landmark_ratio=round(unstable_landmark_ratio, 5),
         reasons=reasons,
+        lip_sync_checked=verify_lip_sync,
     )

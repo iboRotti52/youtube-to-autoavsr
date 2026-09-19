@@ -138,7 +138,7 @@ cloud:
   private: true
 
 processing:
-  # Apple M4 ve çok çekirdekli sistemler için eşzamanlı çalışan iş parçacığı sayısı
-  max_workers: 4
+  # Serial execution for Phase 1 baseline comparison; concurrent execution enabled in Phase 3
+  max_workers: 1
 
 
