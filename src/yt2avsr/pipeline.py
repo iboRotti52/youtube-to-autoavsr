@@ -119,11 +119,16 @@ class Pipeline:
         sources = deduped_sources
 
         if self.shard:
+            from .sources import get_shard_owner
+
             original_count = len(sources)
             sources = partition_sources(sources, self.shard)
+            owner = get_shard_owner(self.shard)
+            owner_info = f" ({owner})" if owner else ""
             print(
-                f"[shard {self.shard[0]}/{self.shard[1]}] Assigned {len(sources)} of {original_count} source(s)."
+                f"[shard {self.shard[0]}/{self.shard[1]}{owner_info}] Assigned {len(sources)} of {original_count} source(s)."
             )
+
 
         processed_ids = load_processed_ids(self.cfg.sources.processed_file)
         results = []

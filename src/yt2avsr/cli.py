@@ -257,11 +257,18 @@ def process_both_sources(
     force: Annotated[bool, typer.Option(help="Re-run completed stages")] = False,
     shard: Annotated[
         str | None,
-        typer.Option("--shard", "-s", help="Shard index/total, e.g. 0/3, 1/3, 2/3"),
+        typer.Option("--shard", "-s", help="Shard: 0/3 (İbrahim Gözlükaya), 1/3 (Damla Kemal), 2/3 (İbrahim Billurcu)"),
     ] = None,
 ):
     cfg = load_config(config)
     shard_tuple = parse_shard(shard)
+    if shard_tuple:
+        from .sources import get_shard_owner
+
+        owner = get_shard_owner(shard_tuple)
+        owner_info = f" ({owner})" if owner else ""
+        typer.echo(f"Running shard {shard_tuple[0]}/{shard_tuple[1]}{owner_info}")
+
 
     if cfg.sources.auto_sync_hf and cfg.cloud.repo_id:
         try:
@@ -595,7 +602,7 @@ def dedup_sources(
 @app.command("modal", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def modal_cmd(
     ctx: typer.Context,
-    shard: Annotated[str | None, typer.Option("--shard", help="Shard index/total, e.g. 0/3")] = None,
+    shard: Annotated[str | None, typer.Option("--shard", help="Shard: 0/3 (İbrahim Gözlükaya), 1/3 (Damla Kemal), 2/3 (İbrahim Billurcu)")] = None,
     url: Annotated[str | None, typer.Option("--url", help="Process single YouTube URL")] = None,
     voiceover: Annotated[bool, typer.Option("--voiceover", help="Mark single URL as voiceover")] = False,
     no_push: Annotated[bool, typer.Option("--no-push", help="Do not push clips to Hugging Face")] = False,
@@ -630,7 +637,18 @@ def modal_cmd(
     # 3. Build command
     cmd = ["modal", "run", "modal_app.py"]
     if shard:
-        cmd.extend(["--shard", shard])
+        from .sources import parse_shard, get_shard_owner
+
+        st = parse_shard(shard)
+        if st:
+            canonical_shard = f"{st[0]}/{st[1]}"
+            owner = get_shard_owner(st)
+            owner_info = f" ({owner})" if owner else ""
+            typer.echo(f"Aktif Shard: {canonical_shard}{owner_info}")
+            cmd.extend(["--shard", canonical_shard])
+        else:
+            cmd.extend(["--shard", shard])
+
     if url:
         cmd.extend(["--url", url])
     if voiceover:

@@ -89,10 +89,11 @@ Sistem video linklerini video kimligi (Video ID) bazinda otomatik olarak tekille
 
 Ayni anda birden fazla kisi (veya bilgisayar) ayni kaynak dosyasi uzerinde calisacaksa, ayni videolarin mukerrer islenmemesi icin `--shard <index>/<total>` parametresini kullan:
 
-Ornek: **3 Kisilik Ekip**
-- 1. Bilgisayar: `ytavsr --shard 0/3`
-- 2. Bilgisayar: `ytavsr --shard 1/3`
-- 3. Bilgisayar: `ytavsr --shard 2/3`
+Ekip üyelerinin shard dağılımı sabittir (asla değişmez):
+- **İbrahim Gözlükaya (Shard 0):** `ytavsr --shard 0/3` *(veya `--shard ibrahim-gozlukaya` ya da `--shard 0`)*
+- **Damla Kemal (Shard 1):** `ytavsr --shard 1/3` *(veya `--shard damla` ya da `--shard 1`)*
+- **İbrahim Billurcu (Shard 2):** `ytavsr --shard 2/3` *(veya `--shard ibrahim-billurcu` ya da `--shard 2`)*
+
 
 Bu ayar sayesinde:
 - Kaynak listesindeki tekil videolar ve buyuk YouTube oynatma listeleri (playlist) 3 bilgisayar arasinda esit bolunur.
@@ -142,10 +143,11 @@ modal setup
 # Listedeki tüm bekleyen videoları bulut GPU'sunda işle ve HF'ye gönder:
 ytavsr modal
 
-# Ekip arkadaşlarıyla çakışmasız paralel çalışma:
-ytavsr modal --shard 0/3
-ytavsr modal --shard 1/3
-ytavsr modal --shard 2/3
+# Ekip üyeleriyle sabit shard paylaşımı (Asla değişmez):
+ytavsr modal --shard 0/3   # İbrahim Gözlükaya (veya --shard ibrahim-gozlukaya / --shard 0)
+ytavsr modal --shard 1/3   # Damla Kemal       (veya --shard damla / --shard 1)
+ytavsr modal --shard 2/3   # İbrahim Billurcu  (veya --shard ibrahim-billurcu / --shard 2)
+
 
 # Tek video test etmek:
 ytavsr modal --url "https://www.youtube.com/watch?v=VIDEO_ID"

@@ -518,18 +518,87 @@ def sync_processed_from_hf(
     return records
 
 
+TEAM_SHARDS: dict[str, tuple[int, int]] = {
+    # Shard 0: İbrahim Gözlükaya (0/3)
+    "0": (0, 3),
+    "0/3": (0, 3),
+    "ibrahim-gozlukaya": (0, 3),
+    "ibrahim_gozlukaya": (0, 3),
+    "ibrahim gozlukaya": (0, 3),
+    "gozlukaya": (0, 3),
+    "iborotti": (0, 3),
+    "iborotti52": (0, 3),
+    # Shard 1: Damla Kemal (1/3)
+    "1": (1, 3),
+    "1/3": (1, 3),
+    "damla": (1, 3),
+    "damla-kemal": (1, 3),
+    "damla_kemal": (1, 3),
+    "damla kemal": (1, 3),
+    "damlakemal": (1, 3),
+    # Shard 2: İbrahim Billurcu (2/3)
+    "2": (2, 3),
+    "2/3": (2, 3),
+    "ibrahim-billurcu": (2, 3),
+    "ibrahim_billurcu": (2, 3),
+    "ibrahim billurcu": (2, 3),
+    "billurcu": (2, 3),
+    "ibrahimbillurcu": (2, 3),
+}
+
+TEAM_SHARD_OWNERS: dict[tuple[int, int], str] = {
+    (0, 3): "İbrahim Gözlükaya",
+    (1, 3): "Damla Kemal",
+    (2, 3): "İbrahim Billurcu",
+}
+
+
+def get_shard_owner(shard: tuple[int, int] | None) -> str | None:
+    """Return the assigned team member name for a 3-way shard, or None."""
+    if not shard:
+        return None
+    return TEAM_SHARD_OWNERS.get(shard)
+
+
 def parse_shard(shard_str: str | None) -> tuple[int, int] | None:
-    """Parse and validate a shard specification like '0/3', '1/3', '2/3'.
+    """Parse and validate a shard specification like '0/3', '1/3', '2/3',
+    or team member names ('ibrahim-gozlukaya', 'damla', 'ibrahim-billurcu').
 
     Returns (index, total) as 0-indexed integers, or None if shard_str is None.
     Raises ValueError on invalid format.
     """
     if not shard_str:
         return None
-    raw = shard_str.strip()
+    raw = str(shard_str).strip()
+
+    # Normalize name lookup (convert Turkish characters to ASCII lower)
+    norm = (
+        raw.lower()
+        .replace("ı", "i")
+        .replace("ğ", "g")
+        .replace("ü", "u")
+        .replace("ş", "s")
+        .replace("ö", "o")
+        .replace("ç", "c")
+    )
+
+    if norm == "ibrahim":
+        raise ValueError(
+            "Ekipte iki İbrahim bulunmaktadır. Lütfen tam belirtin:\n"
+            "  - İbrahim Gözlükaya için: --shard 0/3 (veya --shard ibrahim-gozlukaya)\n"
+            "  - İbrahim Billurcu için:  --shard 2/3 (veya --shard ibrahim-billurcu)"
+        )
+
+    if norm in TEAM_SHARDS:
+        return TEAM_SHARDS[norm]
+
     if "/" not in raw:
         raise ValueError(
-            f"Invalid shard format {shard_str!r}. Expected format: <index>/<total> (e.g. 0/3, 1/3, 2/3)"
+            f"Geçersiz shard: {shard_str!r}. Ekip shardları sabittir:\n"
+            f"  - Shard 0/3: İbrahim Gözlükaya (--shard 0/3 veya --shard ibrahim-gozlukaya)\n"
+            f"  - Shard 1/3: Damla Kemal       (--shard 1/3 veya --shard damla)\n"
+            f"  - Shard 2/3: İbrahim Billurcu  (--shard 2/3 veya --shard ibrahim-billurcu)\n"
+            f"Veya standart format: <index>/<toplam> (örn. 0/3)"
         )
     parts = raw.split("/", 1)
     try:
@@ -545,6 +614,7 @@ def parse_shard(shard_str: str | None) -> tuple[int, int] | None:
             f"Shard index {index} is out of bounds for total {total}. Must be between 0 and {total - 1}."
         )
     return index, total
+
 
 
 def filter_by_shard(items: list[Any], shard: tuple[int, int] | None) -> list[Any]:

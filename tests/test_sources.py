@@ -18,6 +18,7 @@ from yt2avsr.sources import (
     extract_playlist_id,
     extract_video_id,
     filter_by_shard,
+    get_shard_owner,
     get_source_key,
     is_playlist_source,
     is_source_processed,
@@ -27,6 +28,7 @@ from yt2avsr.sources import (
     resolve_source_inputs,
     sync_processed_from_hf,
 )
+
 
 
 def test_extract_video_id():
@@ -132,12 +134,39 @@ def test_parse_shard():
     assert parse_shard("2/3") == (2, 3)
     assert parse_shard("0/1") == (0, 1)
 
-    for invalid in ["3/3", "-1/3", "foo", "0/0", "1/-2", "1"]:
+    # Shorthand numbers
+    assert parse_shard("0") == (0, 3)
+    assert parse_shard("1") == (1, 3)
+    assert parse_shard("2") == (2, 3)
+
+    # Fixed team member names
+    assert parse_shard("ibrahim-gozlukaya") == (0, 3)
+    assert parse_shard("gozlukaya") == (0, 3)
+    assert parse_shard("damla") == (1, 3)
+    assert parse_shard("damla-kemal") == (1, 3)
+    assert parse_shard("ibrahim-billurcu") == (2, 3)
+    assert parse_shard("billurcu") == (2, 3)
+
+    # Shard owners
+    assert get_shard_owner((0, 3)) == "İbrahim Gözlükaya"
+    assert get_shard_owner((1, 3)) == "Damla Kemal"
+    assert get_shard_owner((2, 3)) == "İbrahim Billurcu"
+    assert get_shard_owner((0, 1)) is None
+
+    # Ambiguous "ibrahim" should raise ValueError
+    try:
+        parse_shard("ibrahim")
+        assert False, "Expected ValueError for ambiguous 'ibrahim'"
+    except ValueError as exc:
+        assert "iki İbrahim" in str(exc)
+
+    for invalid in ["3/3", "-1/3", "foo", "0/0", "1/-2", "4"]:
         try:
             parse_shard(invalid)
             assert False, f"Expected ValueError for {invalid}"
         except ValueError:
             pass
+
 
 
 def test_filter_by_shard():

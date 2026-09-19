@@ -139,10 +139,14 @@ if modal is not None:
         print(f"[modal] Found {len(processed_ids)} already processed video ID(s).", flush=True)
 
         shard_tuple = None
-        if shard and "/" in shard:
-            parts = shard.split("/")
-            shard_tuple = (int(parts[0]), int(parts[1]))
-            print(f"[modal] Active sharding: shard {shard_tuple[0] + 1}/{shard_tuple[1]}", flush=True)
+        if shard:
+            from yt2avsr.sources import parse_shard, get_shard_owner
+
+            shard_tuple = parse_shard(shard)
+            owner = get_shard_owner(shard_tuple)
+            owner_info = f" ({owner})" if owner else ""
+            print(f"[modal] Active sharding: shard {shard_tuple[0]}/{shard_tuple[1]}{owner_info}", flush=True)
+
 
         # 2. Filter & Deduplicate
         def is_unprocessed(line: str) -> bool:
@@ -344,10 +348,25 @@ if modal is not None:
             print("Hata: İşlenecek link bulunamadı! sources_*.txt dosyalarına link ekleyin veya --url verin.", file=sys.stderr)
             sys.exit(1)
 
+        shard_display = "Tüm liste (tek çalışan)"
+        canonical_shard = None
+        if shard:
+            from yt2avsr.sources import parse_shard, get_shard_owner
+
+            try:
+                st = parse_shard(shard)
+                if st:
+                    canonical_shard = f"{st[0]}/{st[1]}"
+                    owner = get_shard_owner(st)
+                    shard_display = f"{st[0]}/{st[1]}" + (f" ({owner})" if owner else "")
+            except ValueError as e:
+                print(f"Hata: {e}", file=sys.stderr)
+                sys.exit(1)
+
         print("\n" + "=" * 70)
         print("🚀 MODAL GPU ÇALIŞTIRILIYOR (RetinaFace + 1080p)")
         print(f"  • GPU: {gpu}")
-        print(f"  • Shard: {shard or 'Tüm liste (tek çalışan)'}")
+        print(f"  • Shard: {shard_display}")
         print(f"  • Hugging Face Kullanıcısı: {active_contributor}")
         print(f"  • Hugging Face'e Yükle: {'Hayır (--no-push)' if no_push else 'Evet (Otomatik)'}")
         print("=" * 70 + "\n")
@@ -357,8 +376,9 @@ if modal is not None:
             voiceover_lines=voiceover_lines,
             hf_token=resolved_token,
             contributor=active_contributor,
-            shard=shard if shard else None,
+            shard=canonical_shard,
             push_hf=(not no_push),
+
             sync_hf=True,
             config_path=config,
             limit=limit,

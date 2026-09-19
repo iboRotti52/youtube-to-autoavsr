@@ -155,10 +155,11 @@ ytavsr add linkler.txt
 ytavsr add "URL" --voiceover
 ```
 
-**3 kişi aynı anda çalışıyorsanız, çakışmayı önlemek için `--shard` kullanın:**
-- 1. Bilgisayar: `ytavsr --shard 0/3`
-- 2. Bilgisayar: `ytavsr --shard 1/3`
-- 3. Bilgisayar: `ytavsr --shard 2/3`
+**Ekip üyeleri için SABİT shard dağılımı (çakışmayı önlemek için asla değişmez):**
+- **İbrahim Gözlükaya (Shard 0):** `ytavsr --shard 0/3` *(veya `ytavsr --shard ibrahim-gozlukaya` ya da `ytavsr --shard 0`)*
+- **Damla Kemal (Shard 1):** `ytavsr --shard 1/3` *(veya `ytavsr --shard damla` ya da `ytavsr --shard 1`)*
+- **İbrahim Billurcu (Shard 2):** `ytavsr --shard 2/3` *(veya `ytavsr --shard ibrahim-billurcu` ya da `ytavsr --shard 2`)*
+
 
 Tek başına çalışıyorsan:
 ```bash
@@ -254,11 +255,12 @@ ytavsr modal
 modal run modal_app.py
 ```
 
-#### Ekiple Çakışmasız Paralel Çalışma (Sharding):
-Aynı anda 3 kişi çalışıyorsanız listeyi 3 parçaya bölerek çalıştırın:
-- 1. Kişi: `ytavsr modal --shard 0/3`
-- 2. Kişi: `ytavsr modal --shard 1/3`
-- 3. Kişi: `ytavsr modal --shard 2/3`
+#### Ekiple Sabit Shard Paylaşımı (Asla Değişmez):
+Aynı anda çalışırken çakışmayı önlemek için her ekip üyesinin shard'ı sabittir:
+- **İbrahim Gözlükaya (Shard 0):** `ytavsr modal --shard 0/3` *(veya `--shard 0`, `--shard ibrahim-gozlukaya`)*
+- **Damla Kemal (Shard 1):** `ytavsr modal --shard 1/3` *(veya `--shard 1`, `--shard damla`)*
+- **İbrahim Billurcu (Shard 2):** `ytavsr modal --shard 2/3` *(veya `--shard 2`, `--shard ibrahim-billurcu`)*
+
 
 #### Tek Video veya Özel Seçenekler:
 ```bash
