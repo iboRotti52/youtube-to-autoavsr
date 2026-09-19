@@ -9,7 +9,7 @@ import yt_dlp
 from .config import DownloadConfig
 from .sources import is_source_processed
 from .subtitles import choose_automatic_subtitle, choose_manual_subtitle, download_text
-from .utils import safe_id, write_json
+from .utils import ensure_ffmpeg, safe_id, write_json
 
 
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".mov", ".m4v"}
@@ -45,6 +45,9 @@ def _ydl_options(
             {"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"},
         ],
     }
+    ff_bin = ensure_ffmpeg()
+    if ff_bin:
+        opts["ffmpeg_location"] = ff_bin
     if processed_ids or (playlist and shard and shard[1] > 1):
         def _match_filter(info_dict, *, incomplete=False):
             vid = info_dict.get("id")

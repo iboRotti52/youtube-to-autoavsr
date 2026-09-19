@@ -3,13 +3,39 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 
+def ensure_ffmpeg() -> str | None:
+    """Ensure ffmpeg and ffprobe are available on PATH, trying venv and static_ffmpeg if needed."""
+    if shutil.which("ffmpeg") and shutil.which("ffprobe"):
+        return shutil.which("ffmpeg")
+    venv_bin = Path(sys.prefix) / "bin"
+    if (venv_bin / "ffmpeg").exists():
+        os.environ["PATH"] = str(venv_bin) + os.pathsep + os.environ.get("PATH", "")
+        if shutil.which("ffmpeg"):
+            return shutil.which("ffmpeg")
+    try:
+        import static_ffmpeg
+        static_ffmpeg.add_paths()
+        if shutil.which("ffmpeg"):
+            return shutil.which("ffmpeg")
+    except Exception:
+        pass
+    return shutil.which("ffmpeg")
+
+
+ensure_ffmpeg()
+
+
 def require_binary(name: str) -> None:
+    if shutil.which(name) is None:
+        ensure_ffmpeg()
     if shutil.which(name) is None:
         raise RuntimeError(f"Required executable not found on PATH: {name}")
 
