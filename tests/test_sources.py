@@ -14,8 +14,11 @@ from yt2avsr.sources import (
     canonicalize_source,
     extract_playlist_id,
     extract_video_id,
+    filter_by_shard,
     is_source_processed,
     load_processed_ids,
+    parse_shard,
+    partition_sources,
     sync_processed_from_hf,
 )
 
@@ -114,3 +117,54 @@ def test_sync_processed_from_hf_mock():
             processed = load_processed_ids(path)
             assert is_source_processed("vid00000001", processed)
             assert is_source_processed("https://www.youtube.com/watch?v=vid00000003", processed)
+
+
+def test_parse_shard():
+    assert parse_shard(None) is None
+    assert parse_shard("0/3") == (0, 3)
+    assert parse_shard("1/3") == (1, 3)
+    assert parse_shard("2/3") == (2, 3)
+    assert parse_shard("0/1") == (0, 1)
+
+    for invalid in ["3/3", "-1/3", "foo", "0/0", "1/-2", "1"]:
+        try:
+            parse_shard(invalid)
+            assert False, f"Expected ValueError for {invalid}"
+        except ValueError:
+            pass
+
+
+def test_filter_by_shard():
+    items = list(range(9))
+    s0 = filter_by_shard(items, (0, 3))
+    s1 = filter_by_shard(items, (1, 3))
+    s2 = filter_by_shard(items, (2, 3))
+
+    assert s0 == [0, 3, 6]
+    assert s1 == [1, 4, 7]
+    assert s2 == [2, 5, 8]
+    assert sorted(s0 + s1 + s2) == items
+
+
+def test_partition_sources():
+    sources = [
+        ("auto", "https://youtube.com/watch?v=video000001"),
+        ("auto", "https://youtube.com/watch?v=video000002"),
+        ("auto", "https://youtube.com/watch?v=video000003"),
+        ("playlist", "https://youtube.com/playlist?list=PL123"),
+    ]
+
+    p0 = partition_sources(sources, (0, 2))
+    p1 = partition_sources(sources, (1, 2))
+
+    # Playlist is present in both partitions
+    assert ("playlist", "https://youtube.com/playlist?list=PL123") in p0
+    assert ("playlist", "https://youtube.com/playlist?list=PL123") in p1
+
+    # Single videos are partitioned
+    v0_urls = [url for mode, url in p0 if mode != "playlist"]
+    v1_urls = [url for mode, url in p1 if mode != "playlist"]
+
+    assert v0_urls == ["https://youtube.com/watch?v=video000001", "https://youtube.com/watch?v=video000003"]
+    assert v1_urls == ["https://youtube.com/watch?v=video000002"]
+

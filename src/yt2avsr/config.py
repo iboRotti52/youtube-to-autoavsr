@@ -132,6 +132,8 @@ class CloudConfig(BaseModel):
 class SourcesConfig(BaseModel):
     # Tracking file for completed and pushed YouTube sources
     processed_file: Path = Path("processed_sources.txt")
+    # Automatically sync processed videos from Hugging Face on pipeline startup
+    auto_sync_hf: bool = True
 
 class AppConfig(BaseModel):
     workspace: Path = Path("data")

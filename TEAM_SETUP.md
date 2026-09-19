@@ -132,11 +132,17 @@ yt2avsr sync-processed --config configs/default.yaml
 
 Bu sayede `processed_sources.txt` güncellenir ve diğer ekip üyelerinin işlediği videolar senin listende olsa bile otomatik atlanır.
 
-### 3.3 Kendi videolarını işle
+### 3.3 Kendi videolarını işle (veya ekiple paylaşımlı çalış)
 
 Bulduğun YouTube linklerini `sources_no_voiceover.txt` (veya voiceover'lı olanları
-`sources_voiceover.txt`) dosyasına, satır başına bir link olacak şekilde yaz. Sonra:
+`sources_voiceover.txt`) dosyasına, satır başına bir link olacak şekilde yaz.
 
+**3 kişi aynı anda çalışıyorsanız, çakışmayı önlemek için `--shard` kullanın:**
+- 1. Bilgisayar: `yt2avsr process-both-sources --shard 0/3`
+- 2. Bilgisayar: `yt2avsr process-both-sources --shard 1/3`
+- 3. Bilgisayar: `yt2avsr process-both-sources --shard 2/3`
+
+Tek başına çalışıyorsan parametresiz:
 ```bash
 yt2avsr process-both-sources --config configs/default.yaml
 # veya tek liste:

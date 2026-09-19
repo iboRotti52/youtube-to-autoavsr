@@ -3,6 +3,8 @@ language: tr
 
 sources:
   processed_file: "processed_sources.txt"
+  # Her çalıştırmada Hugging Face'teki güncel videoları otomatik kontrol et
+  auto_sync_hf: true
 
 download:
   format: "bestvideo[height<=1080]+bestaudio/best[height<=1080]"

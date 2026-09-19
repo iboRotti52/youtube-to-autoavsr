@@ -10,23 +10,36 @@ from .sources import (
     append_processed_sources,
     is_source_processed,
     load_processed_ids,
+    parse_shard,
     sync_processed_from_hf,
 )
 
 app=typer.Typer(no_args_is_help=True,help="Prepare permitted videos for Auto-AVSR.")
 
 @app.command()
-def process(url:Annotated[str,typer.Argument()],config:Annotated[Path|None,typer.Option("--config","-c")]=None,
-            force:Annotated[bool,typer.Option()]=False,
-            profile: Annotated[str, typer.Option("--profile", help="no_voiceover or voiceover")] = "no_voiceover"):
-    cfg=load_config(config); Pipeline(cfg,force=force,profile=profile).process_url(url)
-    typer.echo(f"Done: {cfg.workspace/'manifests'/'accepted.csv'}")
+def process(
+    url: Annotated[str, typer.Argument()],
+    config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    force: Annotated[bool, typer.Option()] = False,
+    profile: Annotated[str, typer.Option("--profile", help="no_voiceover or voiceover")] = "no_voiceover",
+    shard: Annotated[str | None, typer.Option("--shard", "-s", help="Shard index/total, e.g. 0/3")] = None,
+):
+    cfg = load_config(config)
+    shard_tuple = parse_shard(shard)
+    Pipeline(cfg, force=force, profile=profile, shard=shard_tuple).process_url(url)
+    typer.echo(f"Done: {cfg.workspace / 'manifests' / 'accepted.csv'}")
 
 @app.command("process-playlist")
-def playlist(url:Annotated[str,typer.Argument()],config:Annotated[Path|None,typer.Option("--config","-c")]=None,
-             force:Annotated[bool,typer.Option()]=False,
-             profile: Annotated[str, typer.Option("--profile", help="no_voiceover or voiceover")] = "no_voiceover"):
-    cfg=load_config(config); Pipeline(cfg,force=force,profile=profile).process_url(url,playlist=True)
+def playlist(
+    url: Annotated[str, typer.Argument()],
+    config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    force: Annotated[bool, typer.Option()] = False,
+    profile: Annotated[str, typer.Option("--profile", help="no_voiceover or voiceover")] = "no_voiceover",
+    shard: Annotated[str | None, typer.Option("--shard", "-s", help="Shard index/total, e.g. 0/3")] = None,
+):
+    cfg = load_config(config)
+    shard_tuple = parse_shard(shard)
+    Pipeline(cfg, force=force, profile=profile, shard=shard_tuple).process_url(url, playlist=True)
 
 @app.command("process-local")
 def local(path:Annotated[Path,typer.Argument()],config:Annotated[Path|None,typer.Option("--config","-c")]=None,
@@ -53,9 +66,14 @@ def process_sources(
         str,
         typer.Option("--profile", help="no_voiceover or voiceover"),
     ] = "no_voiceover",
+    shard: Annotated[
+        str | None,
+        typer.Option("--shard", "-s", help="Shard index/total, e.g. 0/3"),
+    ] = None,
 ):
     cfg = load_config(config)
-    Pipeline(cfg, force=force, profile=profile).process_sources_file(sources)
+    shard_tuple = parse_shard(shard)
+    Pipeline(cfg, force=force, profile=profile, shard=shard_tuple).process_sources_file(sources)
     typer.echo(f"Done: {cfg.workspace / 'manifests' / 'accepted.csv'}")
 
 
@@ -121,8 +139,23 @@ def _write_filtered_sources(path: Path, lines: list[str]) -> Path:
 def process_both_sources(
     config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
     force: Annotated[bool, typer.Option(help="Re-run completed stages")] = False,
+    shard: Annotated[
+        str | None,
+        typer.Option("--shard", "-s", help="Shard index/total, e.g. 0/3, 1/3, 2/3"),
+    ] = None,
 ):
     cfg = load_config(config)
+    shard_tuple = parse_shard(shard)
+
+    if cfg.sources.auto_sync_hf and cfg.cloud.repo_id:
+        try:
+            typer.echo(f"Checking Hugging Face dataset '{cfg.cloud.repo_id}' for latest processed videos...")
+            hf_records = sync_processed_from_hf(cfg.cloud.repo_id, path=cfg.sources.processed_file)
+            if hf_records:
+                typer.echo(f"Hugging Face sync: {len(hf_records)} total unique video(s) tracked.")
+        except Exception as exc:
+            typer.echo(f"[warning] Hugging Face sync skipped ({exc}), continuing with local list.")
+
     processed_ids = load_processed_ids(cfg.sources.processed_file)
 
     def _is_unprocessed(line: str) -> bool:
@@ -184,7 +217,7 @@ def process_both_sources(
         if not _has_usable_sources(path):
             typer.echo(f"Skipping {path.name}: no usable links, moving on.")
             continue
-        Pipeline(cfg, force=force, profile=profile).process_sources_file(path)
+        Pipeline(cfg, force=force, profile=profile, shard=shard_tuple).process_sources_file(path)
         ran.append(path.name)
 
     if not ran:

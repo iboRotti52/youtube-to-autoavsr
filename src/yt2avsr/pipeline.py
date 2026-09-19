@@ -12,7 +12,12 @@ from .media import extract_clip, normalize
 from .profiles import get_profile
 from .scenes import detect_scene_cuts
 from .segment import make_segments
-from .sources import append_processed_sources, is_source_processed, load_processed_ids
+from .sources import (
+    append_processed_sources,
+    is_source_processed,
+    load_processed_ids,
+    partition_sources,
+)
 from .state import StateDB
 from .subtitles import save_youtube_transcript
 from .transcribe import (
@@ -26,9 +31,17 @@ from .visual_quality import analyze_visual_quality
 
 
 class Pipeline:
-    def __init__(self, cfg: AppConfig, *, force: bool = False, profile: str = "no_voiceover") -> None:
+    def __init__(
+        self,
+        cfg: AppConfig,
+        *,
+        force: bool = False,
+        profile: str = "no_voiceover",
+        shard: tuple[int, int] | None = None,
+    ) -> None:
         self.cfg, self.workspace, self.force = cfg, cfg.workspace, force
         self.profile = get_profile(profile)
+        self.shard = shard
         self.state = StateDB(self.workspace / "state.sqlite3")
 
     def process_url(self, url: str, *, playlist: bool = False):
@@ -43,6 +56,7 @@ class Pipeline:
             self.cfg.download,
             playlist=playlist,
             processed_ids=processed_ids,
+            shard=self.shard,
         )
         for item in items:
             self._process_item(item)
@@ -84,6 +98,13 @@ class Pipeline:
         if not sources:
             raise ValueError(f"No usable sources found in {path}")
 
+        if self.shard:
+            original_count = len(sources)
+            sources = partition_sources(sources, self.shard)
+            print(
+                f"[shard {self.shard[0]}/{self.shard[1]}] Assigned {len(sources)} of {original_count} source(s)."
+            )
+
         processed_ids = load_processed_ids(self.cfg.sources.processed_file)
         results = []
         failures = []
@@ -106,6 +127,7 @@ class Pipeline:
                     self.cfg.download,
                     playlist=playlist,
                     processed_ids=processed_ids,
+                    shard=self.shard,
                 )
                 for item in items:
                     self._process_item(item)

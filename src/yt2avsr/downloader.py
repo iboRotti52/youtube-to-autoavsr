@@ -22,6 +22,7 @@ def _ydl_options(
     playlist: bool,
     format_selector: str | None = None,
     processed_ids: set[str] | None = None,
+    shard: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
     opts: dict[str, Any] = {
         "format": format_selector or cfg.format,
@@ -44,11 +45,17 @@ def _ydl_options(
             {"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"},
         ],
     }
-    if processed_ids:
+    if processed_ids or (playlist and shard and shard[1] > 1):
         def _match_filter(info_dict, *, incomplete=False):
             vid = info_dict.get("id")
-            if vid and (vid in processed_ids or str(vid) in processed_ids):
+            if processed_ids and vid and (vid in processed_ids or str(vid) in processed_ids):
                 return f"video {vid} already in processed_sources"
+            if playlist and shard and shard[1] > 1:
+                p_idx = info_dict.get("playlist_index")
+                if p_idx is not None:
+                    zero_idx = int(p_idx) - 1
+                    if (zero_idx % shard[1]) != shard[0]:
+                        return f"video {vid} not in shard {shard[0]}/{shard[1]}"
             return None
         opts["match_filter"] = _match_filter
     if playlist and cfg.playlist_end:
@@ -63,6 +70,7 @@ def _extract_with_fallback(
     *,
     playlist: bool,
     processed_ids: set[str] | None = None,
+    shard: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
     selectors = [
         cfg.format,
@@ -84,6 +92,7 @@ def _extract_with_fallback(
                     playlist=playlist,
                     format_selector=selector,
                     processed_ids=processed_ids,
+                    shard=shard,
                 )
             ) as ydl:
                 return ydl.extract_info(url, download=True)
@@ -125,6 +134,7 @@ def download(
     *,
     playlist: bool = False,
     processed_ids: set[str] | None = None,
+    shard: tuple[int, int] | None = None,
 ) -> list[dict]:
     if not playlist and processed_ids and is_source_processed(url, processed_ids):
         print(f"[SKIP] {url}: Zaten işlenmiş (processed_sources.txt), atlanıyor.")
@@ -132,14 +142,23 @@ def download(
 
     raw_root.mkdir(parents=True, exist_ok=True)
     info = _extract_with_fallback(
-        url, raw_root, cfg, playlist=playlist, processed_ids=processed_ids
+        url,
+        raw_root,
+        cfg,
+        playlist=playlist,
+        processed_ids=processed_ids,
+        shard=shard,
     )
 
     entries = info.get("entries") if isinstance(info, dict) else None
     items = [entry for entry in entries if entry] if entries else [info]
     results: list[dict] = []
 
-    for item in items:
+    for item_idx, item in enumerate(items):
+        if playlist and shard and shard[1] > 1:
+            if (item_idx % shard[1]) != shard[0]:
+                continue
+
         raw_vid = str(item.get("id", ""))
         video_id = safe_id(raw_vid)
         if processed_ids and (

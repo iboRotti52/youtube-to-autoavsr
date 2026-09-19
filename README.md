@@ -63,6 +63,20 @@ Bu komut:
 
 isler. Bos dosyalari atlar.
 
+## Coklu Bilgisayar ile Paralel Calisma (Sharding / Is Bolusturme)
+
+Ayni anda birden fazla kisi (veya bilgisayar) ayni kaynak dosyasi uzerinde calisacaksa, ayni videolarin mukerrer islenmemesi icin `--shard <index>/<total>` parametresini kullan:
+
+Ornek: **3 Kisilik Ekip**
+- 1. Bilgisayar: `ytavsr --shard 0/3`
+- 2. Bilgisayar: `ytavsr --shard 1/3`
+- 3. Bilgisayar: `ytavsr --shard 2/3`
+
+Bu ayar sayesinde:
+- Kaynak listesindeki tekil videolar ve buyuk YouTube oynatma listeleri (playlist) 3 bilgisayar arasinda esit bolunur.
+- Hicbir bilgisayar ayni videoyu indirip islemez (mukerrer islem ve zaman kaybi yasanmaz).
+- Her calistirmada Hugging Face'teki son durum otomatik kontrol edilip onceden islenmis olanlar atlanir.
+
 ## Guclu Bilgisayarlar Icin RetinaFace
 
 Varsayilan ayar 1080p + MediaPipe'tir. Mac CPU gibi yerel makinelerde hizli

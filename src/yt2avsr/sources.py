@@ -265,3 +265,72 @@ def sync_processed_from_hf(
         append_processed_sources(records, path)
 
     return records
+
+
+def parse_shard(shard_str: str | None) -> tuple[int, int] | None:
+    """Parse and validate a shard specification like '0/3', '1/3', '2/3'.
+
+    Returns (index, total) as 0-indexed integers, or None if shard_str is None.
+    Raises ValueError on invalid format.
+    """
+    if not shard_str:
+        return None
+    raw = shard_str.strip()
+    if "/" not in raw:
+        raise ValueError(
+            f"Invalid shard format {shard_str!r}. Expected format: <index>/<total> (e.g. 0/3, 1/3, 2/3)"
+        )
+    parts = raw.split("/", 1)
+    try:
+        index, total = int(parts[0]), int(parts[1])
+    except ValueError:
+        raise ValueError(
+            f"Invalid shard format {shard_str!r}. Index and total must be integers (e.g. 0/3, 1/3, 2/3)"
+        )
+    if total < 1:
+        raise ValueError(f"Shard total must be at least 1, got {total}")
+    if not (0 <= index < total):
+        raise ValueError(
+            f"Shard index {index} is out of bounds for total {total}. Must be between 0 and {total - 1}."
+        )
+    return index, total
+
+
+def filter_by_shard(items: list[Any], shard: tuple[int, int] | None) -> list[Any]:
+    """Return only the items belonging to the given shard (0-indexed modulo)."""
+    if not shard or shard[1] <= 1:
+        return items
+    index, total = shard
+    return [item for i, item in enumerate(items) if (i % total) == index]
+
+
+def partition_sources(
+    sources: list[tuple[str, str]],
+    shard: tuple[int, int] | None,
+) -> list[tuple[str, str]]:
+    """Partition a list of (mode, url) sources for a given shard.
+
+    Single video URLs are distributed across shards (i % total == index).
+    Playlist URLs are returned for all shards because their individual items
+    are partitioned internally during download.
+    """
+    if not shard or shard[1] <= 1:
+        return sources
+    index, total = shard
+    playlist_sources: list[tuple[str, str]] = []
+    single_sources: list[tuple[str, str]] = []
+    for mode, url in sources:
+        is_playlist = mode == "playlist" or (
+            mode == "auto" and ("list=" in url or "/playlist" in url)
+        )
+        if is_playlist:
+            playlist_sources.append((mode, url))
+        else:
+            single_sources.append((mode, url))
+
+    sharded_singles = [
+        item for i, item in enumerate(single_sources) if (i % total) == index
+    ]
+    return sharded_singles + playlist_sources
+
+
