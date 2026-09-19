@@ -555,6 +555,23 @@ def filter_by_shard(items: list[Any], shard: tuple[int, int] | None) -> list[Any
     return [item for i, item in enumerate(items) if (i % total) == index]
 
 
+def is_playlist_source(mode: str, url: str) -> bool:
+    """Determine whether a source line represents an entire playlist or a single video."""
+    mode_lower = mode.strip().lower()
+    if mode_lower == "playlist":
+        return True
+    if mode_lower == "video":
+        return False
+    if "/playlist" in url:
+        return True
+    # If "list=" is present but it also has a specific video (e.g. watch?v=...), it is a single video
+    if "list=" in url and ("v=" in url or extract_video_id(url) is not None):
+        return False
+    if "list=" in url:
+        return True
+    return False
+
+
 def partition_sources(
     sources: list[tuple[str, str]],
     shard: tuple[int, int] | None,
@@ -580,5 +597,6 @@ def partition_sources(
         item for i, item in enumerate(single_sources) if (i % total) == index
     ]
     return sharded_singles + playlist_sources
+
 
 
