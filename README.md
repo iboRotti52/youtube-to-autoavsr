@@ -6,9 +6,9 @@ egitim verisi uretir.
 Kisaca yaptigi is:
 
 1. YouTube videosunu indirir.
-2. Turkce altyazi varsa onu kullanir.
-3. Altyazi yoksa Whisper ile Turkce transcript uretir.
-4. Videoyu cumle/segment parcalarina boler.
+2. Whisper (`large-v3-turbo`) ile yuksek dogrulukta Turkce transcript uretir (YouTube altyazilari gurultulu oldugu icin varsayilan olarak kapali tutulur).
+3. Videoyu cumle/segment parcalarina boler.
+4. Kesilen her klibi ayrica Whisper ile tekrar dinleyerek transcript dogrulugu saglar.
 5. Resmi Auto-AVSR preprocessing ile 96x96 agiz videosu (`mouth.mp4`) uretir.
 6. Kotu veya supheli klipleri `accepted`, `review`, `rejected` olarak ayirir.
 
@@ -330,9 +330,7 @@ Varsayilan akis:
 6. Düşük güvenli segmentleri ele
 ```
 
-YouTube otomatik altyazisi varsayilan olarak kapali. Cunku otomatik altyazi
-tekrarli ve gurultulu olabiliyor. Bu ayar `configs/default.yaml` icindeki
-`use_automatic_youtube_captions` ile degistirilebilir.
+YouTube altyazilari (hem manuel hem otomatik) varsayilan olarak kapalidir (`use_youtube_subtitles: false`). Cunku YouTube altyazilari tekrarli, kayan pencereli veya senkron kaymali olabiliyor ve egitim etiketleri icin gurultu olusturabiliyor. Bunun yerine tum akista dogrudan Whisper (`large-v3-turbo`) kullanilir. Istenirse bu ayarlar `configs/default.yaml` icindeki `use_youtube_subtitles` ve `use_automatic_youtube_captions` ile degistirilebilir.
 
 ## Kalite Kontrolleri
 

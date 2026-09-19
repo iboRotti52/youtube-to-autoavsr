@@ -20,10 +20,15 @@ src/yt2avsr/pipeline.py
 src/yt2avsr/profiles.py
 src/yt2avsr/scenes.py
 src/yt2avsr/segment.py
+src/yt2avsr/sources.py
 src/yt2avsr/state.py
 src/yt2avsr/subtitles.py
 src/yt2avsr/talknet_backend.py
 src/yt2avsr/transcribe.py
 src/yt2avsr/utils.py
 src/yt2avsr/visual_quality.py
+tests/test_auto_avsr_crop.py
+tests/test_config.py
 tests/test_segment.py
+tests/test_sources.py
+tests/test_transcribe.py

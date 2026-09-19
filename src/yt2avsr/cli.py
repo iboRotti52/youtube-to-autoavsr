@@ -238,7 +238,7 @@ def setup_external(config:Annotated[Path|None,typer.Option("--config","-c")]=Non
     if not repo.exists():
         subprocess.run(["git","clone","--depth","1",
                         "https://github.com/mpc001/auto_avsr.git",str(repo)],check=True)
-    subprocess.run(["python","-m","pip","install","-r",
+    subprocess.run([sys.executable,"-m","pip","install","-r",
                     str(repo/"preparation"/"requirements.txt")],check=True)
     typer.echo(f"Official Auto-AVSR installed at {repo}")
 
