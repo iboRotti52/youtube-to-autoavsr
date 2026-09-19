@@ -129,9 +129,14 @@ class CloudConfig(BaseModel):
     repo_id: str | None = None
     private: bool = True
 
+class SourcesConfig(BaseModel):
+    # Tracking file for completed and pushed YouTube sources
+    processed_file: Path = Path("processed_sources.txt")
+
 class AppConfig(BaseModel):
     workspace: Path = Path("data")
     language: str = "tr"
+    sources: SourcesConfig = Field(default_factory=SourcesConfig)
     download: DownloadConfig = Field(default_factory=DownloadConfig)
     normalization: NormalizationConfig = Field(default_factory=NormalizationConfig)
     transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)

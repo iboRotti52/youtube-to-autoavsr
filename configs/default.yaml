@@ -1,6 +1,9 @@
 workspace: data
 language: tr
 
+sources:
+  processed_file: "processed_sources.txt"
+
 download:
   format: "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
   playlist_end: null

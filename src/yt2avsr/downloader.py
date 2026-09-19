@@ -7,6 +7,7 @@ from typing import Any
 import yt_dlp
 
 from .config import DownloadConfig
+from .sources import is_source_processed
 from .subtitles import choose_automatic_subtitle, choose_manual_subtitle, download_text
 from .utils import safe_id, write_json
 
@@ -20,6 +21,7 @@ def _ydl_options(
     *,
     playlist: bool,
     format_selector: str | None = None,
+    processed_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     opts: dict[str, Any] = {
         "format": format_selector or cfg.format,
@@ -42,6 +44,13 @@ def _ydl_options(
             {"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"},
         ],
     }
+    if processed_ids:
+        def _match_filter(info_dict, *, incomplete=False):
+            vid = info_dict.get("id")
+            if vid and (vid in processed_ids or str(vid) in processed_ids):
+                return f"video {vid} already in processed_sources"
+            return None
+        opts["match_filter"] = _match_filter
     if playlist and cfg.playlist_end:
         opts["playlistend"] = cfg.playlist_end
     return opts
@@ -53,6 +62,7 @@ def _extract_with_fallback(
     cfg: DownloadConfig,
     *,
     playlist: bool,
+    processed_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     selectors = [
         cfg.format,
@@ -73,6 +83,7 @@ def _extract_with_fallback(
                     cfg,
                     playlist=playlist,
                     format_selector=selector,
+                    processed_ids=processed_ids,
                 )
             ) as ydl:
                 return ydl.extract_info(url, download=True)
@@ -113,10 +124,15 @@ def download(
     cfg: DownloadConfig,
     *,
     playlist: bool = False,
+    processed_ids: set[str] | None = None,
 ) -> list[dict]:
+    if not playlist and processed_ids and is_source_processed(url, processed_ids):
+        print(f"[SKIP] {url}: Zaten işlenmiş (processed_sources.txt), atlanıyor.")
+        return []
+
     raw_root.mkdir(parents=True, exist_ok=True)
     info = _extract_with_fallback(
-        url, raw_root, cfg, playlist=playlist
+        url, raw_root, cfg, playlist=playlist, processed_ids=processed_ids
     )
 
     entries = info.get("entries") if isinstance(info, dict) else None
@@ -124,9 +140,23 @@ def download(
     results: list[dict] = []
 
     for item in items:
-        video_id = safe_id(str(item["id"]))
+        raw_vid = str(item.get("id", ""))
+        video_id = safe_id(raw_vid)
+        if processed_ids and (
+            raw_vid in processed_ids
+            or video_id in processed_ids
+            or is_source_processed(raw_vid, processed_ids)
+        ):
+            print(f"[SKIP] Video {video_id} ({item.get('title') or ''}): Zaten işlenmiş, atlanıyor.")
+            continue
+
         item_dir = raw_root / video_id
-        downloaded = _find_downloaded_video(item_dir)
+        if not item_dir.exists():
+            continue
+        try:
+            downloaded = _find_downloaded_video(item_dir)
+        except FileNotFoundError:
+            continue
 
         # Keep the real extension. FFmpeg normalization reads any supported container.
         source = item_dir / f"source{downloaded.suffix.lower()}"

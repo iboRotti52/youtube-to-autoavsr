@@ -6,6 +6,12 @@ import typer
 from .config import load_config
 from .manifest import rebuild
 from .pipeline import Pipeline
+from .sources import (
+    append_processed_sources,
+    is_source_processed,
+    load_processed_ids,
+    sync_processed_from_hf,
+)
 
 app=typer.Typer(no_args_is_help=True,help="Prepare permitted videos for Auto-AVSR.")
 
@@ -117,24 +123,61 @@ def process_both_sources(
     force: Annotated[bool, typer.Option(help="Re-run completed stages")] = False,
 ):
     cfg = load_config(config)
+    processed_ids = load_processed_ids(cfg.sources.processed_file)
+
+    def _is_unprocessed(line: str) -> bool:
+        url = _source_url(line)
+        # Playlist URLs might contain new items, so let downloader/pipeline inspect them item-by-item
+        is_playlist = "list=" in url or "/playlist" in url or line.strip().lower().startswith("playlist ")
+        if is_playlist:
+            return True
+        return not is_source_processed(url, processed_ids)
+
     no_voiceover_path = Path("sources_no_voiceover.txt")
     voiceover_path = Path("sources_voiceover.txt")
-    voiceover_urls = {_source_url(line) for line in _usable_source_lines(voiceover_path)}
-    no_voiceover_lines = [
-        line for line in _usable_source_lines(no_voiceover_path)
+
+    usable_voiceover = _usable_source_lines(voiceover_path)
+    filtered_voiceover_lines = [l for l in usable_voiceover if _is_unprocessed(l)]
+    skipped_processed_vo = len(usable_voiceover) - len(filtered_voiceover_lines)
+
+    usable_no_voiceover = _usable_source_lines(no_voiceover_path)
+    voiceover_urls = {_source_url(line) for line in usable_voiceover}
+    non_dup_no_voiceover = [
+        line for line in usable_no_voiceover
         if _source_url(line) not in voiceover_urls
     ]
-    skipped = len(_usable_source_lines(no_voiceover_path)) - len(no_voiceover_lines)
+    skipped_duplicates = len(usable_no_voiceover) - len(non_dup_no_voiceover)
+
+    filtered_no_voiceover_lines = [l for l in non_dup_no_voiceover if _is_unprocessed(l)]
+    skipped_processed_nvo = len(non_dup_no_voiceover) - len(filtered_no_voiceover_lines)
 
     no_voiceover_job_path = (
-        _write_filtered_sources(no_voiceover_path, no_voiceover_lines)
-        if no_voiceover_lines
+        _write_filtered_sources(no_voiceover_path, filtered_no_voiceover_lines)
+        if filtered_no_voiceover_lines
         else no_voiceover_path
+    )
+    voiceover_job_path = (
+        _write_filtered_sources(voiceover_path, filtered_voiceover_lines)
+        if filtered_voiceover_lines
+        else voiceover_path
     )
     jobs = [
         ("no_voiceover", no_voiceover_job_path),
-        ("voiceover", voiceover_path),
+        ("voiceover", voiceover_job_path),
     ]
+
+    total_skipped_processed = skipped_processed_vo + skipped_processed_nvo
+    if total_skipped_processed > 0:
+        typer.echo(
+            f"Skipped {total_skipped_processed} source(s) because they were already processed "
+            f"({cfg.sources.processed_file})."
+        )
+
+    if skipped_duplicates:
+        typer.echo(
+            f"Skipped {skipped_duplicates} duplicate no_voiceover source(s) because they also "
+            "exist in sources_voiceover.txt."
+        )
 
     ran = []
     for profile, path in jobs:
@@ -144,13 +187,10 @@ def process_both_sources(
         Pipeline(cfg, force=force, profile=profile).process_sources_file(path)
         ran.append(path.name)
 
-    if skipped:
-        typer.echo(
-            f"Skipped {skipped} duplicate no_voiceover source(s) because they also "
-            "exist in sources_voiceover.txt."
-        )
-
     if not ran:
+        if total_skipped_processed > 0:
+            typer.echo("All sources have already been processed.")
+            return
         raise typer.BadParameter(
             "Neither sources_no_voiceover.txt nor sources_voiceover.txt has any "
             "usable links. Add at least one YouTube URL (one per line, no '#')."
@@ -251,6 +291,35 @@ def push_data(
                   statuses=statuses, token=token, private=cfg.cloud.private,
                   include_source=include_source, include_audio=include_audio)
     typer.echo(f"Pushed: {result}")
+
+    # Record successfully pushed video metadata into processed_sources.txt
+    import json
+    recs = []
+    for p in sorted((cfg.workspace / "clips").glob("*/*/metadata.json")):
+        try:
+            recs.append(json.loads(p.read_text(encoding="utf-8")))
+        except Exception:
+            pass
+    pushed_records = [r for r in recs if r.get("quality_status") in statuses]
+    added = append_processed_sources(pushed_records, cfg.sources.processed_file)
+    if added:
+        typer.echo(f"Recorded {added} new video(s) into {cfg.sources.processed_file}")
+
+
+@app.command("sync-processed")
+def sync_processed(
+    config: Annotated[Path | None, typer.Option("--config", "-c")] = None,
+    repo: Annotated[str | None, typer.Option("--repo", help="HF dataset repo id, overrides config")] = None,
+    token: Annotated[str | None, typer.Option("--token", help="HF token (else HF_TOKEN env or cached login)")] = None,
+):
+    """Sync previously processed videos from all teammates on Hugging Face into processed_sources.txt."""
+    cfg = load_config(config)
+    repo_id = repo or cfg.cloud.repo_id
+    if not repo_id:
+        raise typer.BadParameter("Set cloud.repo_id in the config or pass --repo")
+    typer.echo(f"Checking Hugging Face dataset '{repo_id}' for all contributors' videos...")
+    records = sync_processed_from_hf(repo_id=repo_id, token=token, path=cfg.sources.processed_file)
+    typer.echo(f"Sync complete. Found {len(records)} unique video(s) from HF, updated {cfg.sources.processed_file}.")
 
 
 @app.command("pull-data")

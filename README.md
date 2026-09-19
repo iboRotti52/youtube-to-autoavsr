@@ -18,11 +18,12 @@ Kisaca yaptigi is:
 
 ## Hangi Dosyaya Link Yazacagim?
 
-Repo icinde iki kaynak dosyasi var:
+Repo icinde kaynak ve takip dosyalari bulunur:
 
 ```text
 sources_no_voiceover.txt
 sources_voiceover.txt
+processed_sources.txt
 ```
 
 Video turune gore linki bu dosyalardan birine yaz:
@@ -31,6 +32,7 @@ Video turune gore linki bu dosyalardan birine yaz:
 | --- | --- |
 | `sources_no_voiceover.txt` | Ekrandaki kisi konusuyor, dis ses/dublaj yok. |
 | `sources_voiceover.txt` | Anlatici, dis ses, dublaj veya ekrandaki agizla her zaman eslesmeyen ses olabilir. |
+| `processed_sources.txt` | Daha once islenmis ve buluta aktarilmis videolar. Buradaki videolar otomatik olarak atlanir (tekrar islenmez). |
 
 Her satira bir YouTube linki yaz:
 
@@ -455,6 +457,16 @@ Tek bir kisinin verisini indirmek:
 ```bash
 ytavsr pull-data --config configs/default.yaml --dest data_cloud --contributor ibrahim
 ```
+
+### Daha Once Islenmis Videolari Senkronize Etmek (Mukerrer Onleme)
+
+Ekipteki diger arkadaslarinizin Hugging Face'e yukledigi tum videolari tarayip kendi `processed_sources.txt` dosyaniza eklemek icin:
+
+```bash
+ytavsr sync-processed --config configs/default.yaml
+```
+
+Bu komut sayesinde baska birinin isledigi videolar otomatik olarak listenize eklenir ve sizde tekrar indirilip islenmez.
 
 ## Teknik Notlar
 

@@ -13,3 +13,6 @@ external/
 *.token
 hf_token*
 *.egg-info/ # gereksiz build klasörünü hariç tut
+.*.filtered.txt
+*.tmp
+.Rhistory

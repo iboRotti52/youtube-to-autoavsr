@@ -122,7 +122,17 @@ yt2avsr setup-external --config configs/default.yaml
 huggingface-cli login       # HF token'ını yapıştır (bir kez)
 ```
 
-### 3.2 Kendi videolarını işle
+### 3.2 Önceki işlenmiş videoları senkronize et (Mükerrer önleme)
+
+Başkalarının daha önce işleyip Hugging Face'e attığı videoları çekmek için:
+
+```bash
+yt2avsr sync-processed --config configs/default.yaml
+```
+
+Bu sayede `processed_sources.txt` güncellenir ve diğer ekip üyelerinin işlediği videolar senin listende olsa bile otomatik atlanır.
+
+### 3.3 Kendi videolarını işle
 
 Bulduğun YouTube linklerini `sources_no_voiceover.txt` (veya voiceover'lı olanları
 `sources_voiceover.txt`) dosyasına, satır başına bir link olacak şekilde yaz. Sonra:
@@ -136,7 +146,7 @@ yt2avsr process-sources sources_no_voiceover.txt --config configs/default.yaml
 Çıktı lokalde `data/clips/...` altında oluşur ve `data/manifests/accepted.csv`
 kullanılabilir klipleri listeler.
 
-### 3.3 Verini buluta gönder
+### 3.4 Verini buluta gönder
 
 ```bash
 yt2avsr push-data --config configs/default.yaml

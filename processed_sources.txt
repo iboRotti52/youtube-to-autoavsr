@@ -1,0 +1,4 @@
+# Daha önce işlenmiş ve Hugging Face dataset reposuna aktarılmış YouTube videoları.
+# Bu listedeki videolar tekrar indirilmez ve işlenmez (mükerrer indirme ve işlemeyi önler).
+# Format: YouTube Video URL veya Video ID (satır başına bir tane)
+#

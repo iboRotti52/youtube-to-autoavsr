@@ -12,6 +12,7 @@ from .media import extract_clip, normalize
 from .profiles import get_profile
 from .scenes import detect_scene_cuts
 from .segment import make_segments
+from .sources import append_processed_sources, is_source_processed, load_processed_ids
 from .state import StateDB
 from .subtitles import save_youtube_transcript
 from .transcribe import (
@@ -31,11 +32,27 @@ class Pipeline:
         self.state = StateDB(self.workspace / "state.sqlite3")
 
     def process_url(self, url: str, *, playlist: bool = False):
-        items = download(url, self.workspace/"raw", self.cfg.download, playlist=playlist)
-        for item in items: self._process_item(item)
-        rebuild(self.workspace)
-        return items
+        processed_ids = load_processed_ids(self.cfg.sources.processed_file)
+        if not playlist and is_source_processed(url, processed_ids):
+            print(f"[SKIP] {url}: Zaten işlenmiş ({self.cfg.sources.processed_file}), atlanıyor.")
+            return []
 
+        items = download(
+            url,
+            self.workspace / "raw",
+            self.cfg.download,
+            playlist=playlist,
+            processed_ids=processed_ids,
+        )
+        for item in items:
+            self._process_item(item)
+        rebuild(self.workspace)
+        if items:
+            append_processed_sources(
+                [item["metadata"] for item in items if "metadata" in item],
+                self.cfg.sources.processed_file,
+            )
+        return items
 
     def process_sources_file(self, path: Path):
         if not path.exists():
@@ -67,23 +84,37 @@ class Pipeline:
         if not sources:
             raise ValueError(f"No usable sources found in {path}")
 
+        processed_ids = load_processed_ids(self.cfg.sources.processed_file)
         results = []
         failures = []
         for index, (mode, url) in enumerate(sources, start=1):
-            print(f"[{index}/{len(sources)}] Processing: {url}")
             playlist = mode == "playlist" or (
                 mode == "auto" and ("list=" in url or "/playlist" in url)
             )
+            if not playlist and is_source_processed(url, processed_ids):
+                print(
+                    f"[SKIP] [{index}/{len(sources)}] {url}: "
+                    f"Zaten işlenmiş ({self.cfg.sources.processed_file}), atlanıyor."
+                )
+                continue
+
+            print(f"[{index}/{len(sources)}] Processing: {url}")
             try:
                 items = download(
                     url,
                     self.workspace / "raw",
                     self.cfg.download,
                     playlist=playlist,
+                    processed_ids=processed_ids,
                 )
                 for item in items:
                     self._process_item(item)
                 results.extend(items)
+                if items:
+                    append_processed_sources(
+                        [item["metadata"] for item in items if "metadata" in item],
+                        self.cfg.sources.processed_file,
+                    )
             except Exception as exc:
                 failures.append((url, str(exc)))
                 print(f"[ERROR] {url}: {exc}")
