@@ -176,14 +176,19 @@ def crop_with_official_auto_avsr(source: Path, output: Path,
                                  cfg: AutoAVSRConfig,
                                  *,
                                  landmark_source: Path | None = None,
-                                 start_seconds: float | None = None) -> CropMetrics:
+                                 start_seconds: float | None = None,
+                                 duration_seconds: float | None = None) -> CropMetrics:
     detector, processor = _get_components(cfg)
 
     if landmark_source is not None and start_seconds is not None:
-        source_frame_count, fps = _probe_frame_count(source)
+        cached_landmarks, landmark_fps = _read_cached_landmarks(landmark_source, cfg)
+        if duration_seconds is not None:
+            source_frame_count = max(1, int(round(duration_seconds * landmark_fps)))
+            fps = landmark_fps
+        else:
+            source_frame_count, fps = _probe_frame_count(source)
         if source_frame_count == 0:
             raise RuntimeError("Source clip has no frames")
-        cached_landmarks, landmark_fps = _read_cached_landmarks(landmark_source, cfg)
         start_frame = max(0, int(round(start_seconds * landmark_fps)))
         frames, _ = _read_rgb_frame_slice(
             landmark_source, start_frame, source_frame_count

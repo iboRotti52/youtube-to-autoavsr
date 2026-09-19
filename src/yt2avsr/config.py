@@ -30,6 +30,7 @@ class TranscriptionConfig(BaseModel):
     device: str = "auto"
     compute_type: str = "auto"
     beam_size: int = 5
+    num_workers: int = 1
     vad_filter: bool = True
     min_silence_duration_ms: int = 500
     min_word_probability: float = 0.55
@@ -123,6 +124,7 @@ class QualityConfig(BaseModel):
     min_active_speaker_score: float = 0.18
     min_face_coverage: float = 0.80
     min_sharpness: float = 18.0
+    save_source_clip: bool = False
 
 class CloudConfig(BaseModel):
     # Shared private Hugging Face dataset repo, e.g. "my-team/avsr-tr-dataset".

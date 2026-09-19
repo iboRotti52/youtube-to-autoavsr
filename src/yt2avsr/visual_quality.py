@@ -93,17 +93,28 @@ def _longest_false_run(values: list[bool]) -> int:
 
 def analyze_visual_quality(
     video_path: Path,
-    audio_path: Path,
+    audio_path: Path | None,
     cfg: VisualQualityConfig,
     verify_lip_sync: bool = True,
+    *,
+    start_seconds: float = 0.0,
+    duration_seconds: float | None = None,
 ) -> VisualQualityResult:
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open visual quality input: {video_path}")
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    start_frame = max(0, int(round(start_seconds * fps)))
+    total_frames = int(round(duration_seconds * fps)) if duration_seconds is not None else None
+
+    if start_frame > 0:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
     frames: list[np.ndarray] = []
     while True:
+        if total_frames is not None and len(frames) >= total_frames:
+            break
         ok, frame = cap.read()
         if not ok:
             break

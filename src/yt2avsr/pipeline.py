@@ -8,7 +8,7 @@ from .auto_avsr_crop import NoUsableFaceError, crop_with_official_auto_avsr
 from .config import AppConfig
 from .downloader import download, register_local
 from .manifest import rebuild
-from .media import extract_clip, normalize
+from .media import extract_audio_clip, extract_clip, normalize
 from .profiles import get_profile
 from .scenes import detect_scene_cuts
 from .segment import make_segments
@@ -265,6 +265,16 @@ class Pipeline:
         workers = getattr(self.cfg, "processing", None)
         max_workers = workers.max_workers if workers else 4
         if max_workers > 1 and len(segments) > 1:
+            self.cfg.transcription.num_workers = max(self.cfg.transcription.num_workers, max_workers)
+            if self.cfg.transcription.verify_clips:
+                try:
+                    from .transcribe import _load_model, resolve_device
+                    dev, comp = resolve_device(self.cfg.transcription.device)
+                    ctype = comp if self.cfg.transcription.compute_type == "auto" else self.cfg.transcription.compute_type
+                    _load_model(self.cfg.transcription.model, dev, ctype, num_workers=self.cfg.transcription.num_workers)
+                except Exception as exc:
+                    print(f"[warning] Whisper model pre-loading failed: {exc}", flush=True)
+
             from concurrent.futures import ThreadPoolExecutor, as_completed
             print(f"[parallel] Processing {len(segments)} segments with {max_workers} worker threads...", flush=True)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -334,8 +344,13 @@ class Pipeline:
         def build():
             out.mkdir(parents=True, exist_ok=True)
             t0 = time.perf_counter()
-            extract_clip(normalized, segment["start"], segment["end"],
-                         source_clip, audio_clip, self.cfg.normalization)
+            extract_audio_clip(
+                normalized,
+                segment["start"],
+                segment["end"],
+                audio_clip,
+                self.cfg.normalization.audio_sample_rate,
+            )
             t_extract = time.perf_counter() - t0
 
             original_text = segment["text"]
@@ -432,13 +447,27 @@ class Pipeline:
                 return
 
             if self.cfg.active_speaker.enabled:
+                extract_clip(normalized, segment["start"], segment["end"],
+                             source_clip, audio_clip, self.cfg.normalization)
                 asd = select_active_speaker(source_clip, speaker_clip,
                     self.cfg.active_speaker, self.cfg.normalization.fps)
                 crop_input = asd.video_path
                 as_score, coverage = asd.score, asd.coverage
+                crop_landmark_source = None
+                crop_start_seconds = None
+                crop_duration_seconds = None
+                visual_source = crop_input
+                visual_start = 0.0
+                visual_duration = None
             else:
-                crop_input = source_clip
+                crop_input = normalized
                 as_score, coverage = 1.0, 1.0
+                crop_landmark_source = normalized
+                crop_start_seconds = float(segment["start"])
+                crop_duration_seconds = float(segment["duration"])
+                visual_source = normalized
+                visual_start = float(segment["start"])
+                visual_duration = float(segment["duration"])
 
             # Both profiles run the same mouth-visibility / scene / occlusion checks.
             # The ONLY profile difference: voiceover verifies lip-sync (rejects
@@ -447,8 +476,10 @@ class Pipeline:
             t0 = time.perf_counter()
             visual = (
                 analyze_visual_quality(
-                    crop_input, audio_clip, self.cfg.visual_quality,
+                    visual_source, audio_clip, self.cfg.visual_quality,
                     verify_lip_sync=self.profile.verify_lip_sync,
+                    start_seconds=visual_start,
+                    duration_seconds=visual_duration,
                 )
                 if self.cfg.visual_quality.enabled else None
             )
@@ -488,10 +519,9 @@ class Pipeline:
                         crop_input,
                         mouth_clip,
                         self.cfg.auto_avsr,
-                        landmark_source=normalized if crop_input == source_clip else None,
-                        start_seconds=(
-                            float(segment["start"]) if crop_input == source_clip else None
-                        ),
+                        landmark_source=crop_landmark_source,
+                        start_seconds=crop_start_seconds,
+                        duration_seconds=crop_duration_seconds,
                     )
                     t_crop = time.perf_counter() - t0
                     crop_sharpness = crop.sharpness
@@ -539,7 +569,15 @@ class Pipeline:
                 audio_path_value = ""
                 mouth_path_value = ""
             else:
-                video_path_value = str(source_clip)
+                if self.cfg.quality.save_source_clip:
+                    if not source_clip.exists():
+                        extract_clip(normalized, segment["start"], segment["end"],
+                                     source_clip, audio_clip, self.cfg.normalization)
+                    video_path_value = str(source_clip)
+                else:
+                    if source_clip.exists():
+                        source_clip.unlink()
+                    video_path_value = ""
                 active_speaker_path_value = str(crop_input)
                 audio_path_value = str(audio_clip)
 

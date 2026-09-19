@@ -30,6 +30,28 @@ def normalize(source: Path, output: Path, cfg: NormalizationConfig) -> None:
     )
 
 
+def extract_audio_clip(
+    source: Path,
+    start: float,
+    end: float,
+    audio_output: Path,
+    sample_rate: int = 16000,
+) -> None:
+    require_binary("ffmpeg")
+    duration = max(0.01, end - start)
+    audio_output.parent.mkdir(parents=True, exist_ok=True)
+    run(
+        [
+            "ffmpeg", "-y",
+            "-ss", f"{start:.3f}", "-i", str(source),
+            "-t", f"{duration:.3f}",
+            "-vn", "-ac", "1", "-ar", str(sample_rate),
+            "-c:a", "pcm_s16le",
+            str(audio_output),
+        ]
+    )
+
+
 def extract_clip(
     source: Path,
     start: float,

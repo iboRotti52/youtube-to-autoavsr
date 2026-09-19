@@ -4,6 +4,7 @@ import re
 from difflib import SequenceMatcher
 from functools import lru_cache
 from pathlib import Path
+import threading
 from typing import Any
 
 from faster_whisper import WhisperModel
@@ -11,6 +12,9 @@ from tqdm import tqdm
 
 from .config import TranscriptionConfig
 from .utils import normalize_text, write_json
+
+
+_MODEL_LOCK = threading.Lock()
 
 
 def resolve_device(device: str) -> tuple[str, str]:
@@ -26,12 +30,26 @@ def resolve_device(device: str) -> tuple[str, str]:
 
 
 @lru_cache(maxsize=4)
-def _load_model(model_name: str, device: str, compute_type: str) -> WhisperModel:
+def _load_model_cached(
+    model_name: str, device: str, compute_type: str, num_workers: int
+) -> WhisperModel:
     print(
-        f"[whisper] loading model={model_name} device={device} compute={compute_type}",
+        f"[whisper] loading model={model_name} device={device} compute={compute_type} num_workers={num_workers}",
         flush=True,
     )
-    return WhisperModel(model_name, device=device, compute_type=compute_type)
+    return WhisperModel(
+        model_name,
+        device=device,
+        compute_type=compute_type,
+        num_workers=num_workers,
+    )
+
+
+def _load_model(
+    model_name: str, device: str, compute_type: str, num_workers: int = 1
+) -> WhisperModel:
+    with _MODEL_LOCK:
+        return _load_model_cached(model_name, device, compute_type, num_workers)
 
 
 def words_to_text(words: list[dict[str, Any]]) -> str:
@@ -67,7 +85,8 @@ def transcribe(video: Path, words_output: Path, language: str,
                cfg: TranscriptionConfig) -> list[dict[str, Any]]:
     device, default_compute = resolve_device(cfg.device)
     compute_type = default_compute if cfg.compute_type == "auto" else cfg.compute_type
-    model = _load_model(cfg.model, device, compute_type)
+    num_workers = getattr(cfg, "num_workers", 1)
+    model = _load_model(cfg.model, device, compute_type, num_workers=num_workers)
     print(f"[whisper] transcribing {video}", flush=True)
     segments, info = model.transcribe(
         str(video), language=language, beam_size=cfg.beam_size,

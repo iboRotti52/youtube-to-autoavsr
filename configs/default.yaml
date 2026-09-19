@@ -137,8 +137,4 @@ cloud:
   repo_id: "avsr-tr-ekip/avsr-tr-dataset"
   private: true
 
-processing:
-  # Serial execution for Phase 1 baseline comparison; concurrent execution enabled in Phase 3
-  max_workers: 1
-
 
