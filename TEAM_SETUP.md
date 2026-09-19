@@ -149,7 +149,7 @@ Bu komut otomatik olarak:
 3. Dosyaya ekleyip GitHub'a otomatik yükler (`git push`).
 
 ```bash
-# Tek video eklemek:
+# Tek video eklemek (doğrudan sources_no_voiceover.txt'ye yazar):
 ytavsr add "https://www.youtube.com/watch?v=VIDEO_ID"
 
 # Birden fazla videoyu aynı anda eklemek:
@@ -157,19 +157,14 @@ ytavsr add "URL1" "URL2" "URL3"
 
 # Kendi hazırladığın metin dosyasındaki linkleri topluca eklemek:
 ytavsr add linkler.txt
-# veya bayrakla:
-ytavsr add -f damla_linkler.txt
-
-# Dış ses / dublaj içeren videolar veya dosyalar için:
-ytavsr add "URL" --voiceover
-ytavsr add -f sesli_linkler.txt --voiceover
 ```
 
+> ⚠️ **Not:** Şu an projede sadece `no_voiceover` (konuşmacının yüzünün net göründüğü, dış ses/dublaj olmayan) videolar toplanmaktadır. Tüm linkler otomatik olarak `sources_no_voiceover.txt` dosyasına eklenir.
 
-**Ekip üyeleri için SABİT shard dağılımı (çakışmayı önlemek için asla değişmez):**
-- **İbrahim Gözlükaya (Shard 0):** `ytavsr --shard 0/3` *(veya `ytavsr --shard ibrahim-gozlukaya` ya da `ytavsr --shard 0`)*
-- **Damla Kemal (Shard 1):** `ytavsr --shard 1/3` *(veya `ytavsr --shard damla` ya da `ytavsr --shard 1`)*
-- **İbrahim Billurcu (Shard 2):** `ytavsr --shard 2/3` *(veya `ytavsr --shard ibrahim-billurcu` ya da `ytavsr --shard 2`)*
+**Ekip üyeleri için SABİT shard dağılımı (Modal bulut GPU üzerinde):**
+- **İbrahim Gözlükaya (Shard 0):** `ytavsr modal --shard 0`
+- **Damla Kemal (Shard 1):** `ytavsr modal --shard 1`
+- **İbrahim Billurcu (Shard 2):** `ytavsr modal --shard 2`
 
 
 Tek başına çalışıyorsan:

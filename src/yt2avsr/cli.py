@@ -59,7 +59,7 @@ def process_sources(
     sources: Annotated[
         Path,
         typer.Argument(help="Text file containing one YouTube URL per line"),
-    ] = Path("sources.txt"),
+    ] = Path("sources_no_voiceover.txt"),
     config: Annotated[
         Path | None,
         typer.Option("--config", "-c"),
@@ -587,7 +587,6 @@ def dedup_sources(
     target_files = files or [
         Path("sources_no_voiceover.txt"),
         Path("sources_voiceover.txt"),
-        Path("sources.txt"),
     ]
 
     total_removed = 0
