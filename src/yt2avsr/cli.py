@@ -91,11 +91,19 @@ def process_sources(
 @app.command("add")
 def add_command(
     items: Annotated[
-        list[str],
+        list[str] | None,
         typer.Argument(
             help="One or more YouTube URLs, video IDs, or paths to .txt files containing links",
         ),
-    ],
+    ] = None,
+    file: Annotated[
+        list[Path] | None,
+        typer.Option("--file", "-f", help="Read links from one or more text files (e.g. -f linkler.txt)"),
+    ] = None,
+    target: Annotated[
+        Path | None,
+        typer.Option("--target", "-t", help="Target source file (default: sources_no_voiceover.txt or sources_voiceover.txt)"),
+    ] = None,
     voiceover: Annotated[
         bool,
         typer.Option("--voiceover", "-vo", help="Add to sources_voiceover.txt instead of sources_no_voiceover.txt"),
@@ -113,9 +121,31 @@ def add_command(
         typer.Option("--canonicalize/--keep-raw", help="Standardize YouTube URLs (strip list/tracking params)"),
     ] = True,
 ):
-    """Add one or more YouTube links or files of links to source files with auto git sync & deduplication."""
-    target_path = Path("sources_voiceover.txt") if voiceover else Path("sources_no_voiceover.txt")
-    other_path = Path("sources_no_voiceover.txt") if voiceover else Path("sources_voiceover.txt")
+    """Add YouTube links (directly or from text files) to source files with auto git sync & deduplication."""
+    combined_items: list[str] = []
+    if items:
+        combined_items.extend(items)
+    if file:
+        combined_items.extend(str(f) for f in file)
+
+    if not combined_items:
+        typer.secho("Hata: Eklenecek video linki veya dosya belirtilmedi!", fg=typer.colors.RED, bold=True)
+        typer.echo(
+            "Örnek kullanım:\n"
+            "  ytavsr add \"https://www.youtube.com/watch?v=VIDEO_ID\"\n"
+            "  ytavsr add dosyam.txt\n"
+            "  ytavsr add -f dosyam.txt\n"
+            "  ytavsr add -f dosyam.txt --voiceover\n"
+        )
+        raise typer.Exit(1)
+
+    if target:
+        target_path = target
+        other_path = None
+    else:
+        target_path = Path("sources_voiceover.txt") if voiceover else Path("sources_no_voiceover.txt")
+        other_path = Path("sources_no_voiceover.txt") if voiceover else Path("sources_voiceover.txt")
+
 
     # Step 1: Git pull if requested
     if pull:
@@ -137,11 +167,12 @@ def add_command(
 
     # Step 2: Add sources
     result = add_sources_to_file(
-        items=items,
+        items=combined_items,
         target_path=target_path,
         other_source_path=other_path,
         canonicalize=canonicalize,
     )
+
 
     added = result["added"]
     duplicates = result["duplicates"]

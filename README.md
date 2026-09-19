@@ -31,12 +31,16 @@ ytavsr add "https://www.youtube.com/watch?v=VIDEO_ID"
 # 2. Birden fazla videoyu aynı anda ekleme:
 ytavsr add "https://youtu.be/VID1" "https://youtu.be/VID2"
 
-# 3. Dış ses / dublaj / belgesel / anlatıcı içeren video:
-ytavsr add "https://www.youtube.com/watch?v=VIDEO_ID" --voiceover
-
-# 4. Bir metin dosyasındaki tüm linkleri topluca ekleme:
+# 3. Kendi dosyanızdaki linkleri topluca ekleme:
 ytavsr add linkler.txt
+# veya bayrakla:
+ytavsr add -f dosyam.txt
+
+# 4. Dış ses / dublaj / belgesel / anlatıcı içeren video veya dosya:
+ytavsr add "https://www.youtube.com/watch?v=VIDEO_ID" --voiceover
+ytavsr add -f sesli_linkler.txt --voiceover
 ```
+
 
 ---
 

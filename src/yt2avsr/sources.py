@@ -233,18 +233,20 @@ def resolve_source_inputs(items: Iterable[str]) -> list[str]:
     """Expand a list of items which may contain URLs, IDs, or paths to files."""
     resolved: list[str] = []
     for item in items:
-        raw = item.strip()
+        raw = str(item).strip().strip("'\",")
         if not raw:
             continue
-        path_candidate = Path(raw)
+        path_candidate = Path(raw).expanduser()
         if path_candidate.exists() and path_candidate.is_file():
-            for line in path_candidate.read_text(encoding="utf-8").splitlines():
-                stripped_line = line.strip()
+            content = path_candidate.read_text(encoding="utf-8-sig", errors="replace")
+            for line in content.splitlines():
+                stripped_line = line.strip().strip("'\",")
                 if stripped_line and not stripped_line.startswith("#"):
                     resolved.append(stripped_line)
         else:
             resolved.append(raw)
     return resolved
+
 
 
 def add_sources_to_file(

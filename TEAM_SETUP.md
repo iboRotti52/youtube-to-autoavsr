@@ -99,11 +99,28 @@ git commit -m "Ortak HF dataset repo'sunu ayarla"
 git push
 ```
 
-### 2.4 Arkadaşlarına HF erişimi ver
+### 2.4 Arkadaşlarına HF yazma erişimi ver (ÇOK ÖNEMLİ!)
 
-HF'de dataset → **Settings → (üyeler / collaborators)** → arkadaşlarının HF
-kullanıcı adlarını **write** yetkisiyle ekle. (Bir organizasyon açıp herkesi oraya
-davet etmek en temiz yöntemdir.)
+Hugging Face'te kişisel hesap altındaki repolara (`iboRotti/avsr-tr-dataset`) varsayılan olarak **yalnızca repo sahibi** yazabilir. Arkadaşların kendi kişisel HF token'ları ile doğrudan senin repoya yazmaya çalışırlarsa Hugging Face `403 Forbidden` (yazma yetkisi yok) hatası verir.
+
+Bunu çözmenin iki çok kolay yolu vardır:
+
+#### Seçenek 1: Write Yetkili Token'ı Paylaş (En Hızlı ve Pratik Yol ⭐)
+1. Kendi Hugging Face hesabında: [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) → **New token** → Role: **Write** seç → oluştur.
+2. Bu token'ı Damla ve İbrahim Billurcu ile paylaş.
+3. Onlar kendi bilgisayarlarında terminalden:
+   ```bash
+   huggingface-cli login
+   ```
+   komutunu çalıştırıp bu ortak Write token'ını yapıştırırlar (veya Modal komutunda `--hf-token "hf_..."` parametresi olarak verirler).
+> 💡 **Klasörler karışır mı?** Hayır! Token ortak olsa dahi Modal veya local pipeline çalışırken her üye kendi adıyla çalışır (`data/damla/...`, `data/ibrahim-billurcu/...`). Dolayısıyla kimse kimsenin verisini ezmez.
+
+#### Seçenek 2: Ücretsiz Hugging Face Organizasyonu Aç (Alternatif / Profesyonel Yol)
+1. Hugging Face'te sağ üst profil → **New Organization** → Örn. `avsr-tr` adında ücretsiz bir organizasyon kur.
+2. Organizasyonun **Members** sekmesinden Damla ve İbrahim Billurcu'yu **Write** rolüyle davet et.
+3. Dataset'i organizasyon altına taşı (`avsr-tr/avsr-tr-dataset`) ve `configs/default.yaml` içindeki `repo_id`'yi güncelle.
+4. Bu durumda herkes kendi bireysel token'ı ile repoya yazabilir.
+
 
 ---
 
@@ -148,12 +165,16 @@ ytavsr add "https://www.youtube.com/watch?v=VIDEO_ID"
 # Birden fazla videoyu aynı anda eklemek:
 ytavsr add "URL1" "URL2" "URL3"
 
-# Dosyadan topluca eklemek:
+# Kendi hazırladığın metin dosyasındaki linkleri topluca eklemek:
 ytavsr add linkler.txt
+# veya bayrakla:
+ytavsr add -f damla_linkler.txt
 
-# Dış ses / dublaj içeren videolar için:
+# Dış ses / dublaj içeren videolar veya dosyalar için:
 ytavsr add "URL" --voiceover
+ytavsr add -f sesli_linkler.txt --voiceover
 ```
+
 
 **Ekip üyeleri için SABİT shard dağılımı (çakışmayı önlemek için asla değişmez):**
 - **İbrahim Gözlükaya (Shard 0):** `ytavsr --shard 0/3` *(veya `ytavsr --shard ibrahim-gozlukaya` ya da `ytavsr --shard 0`)*

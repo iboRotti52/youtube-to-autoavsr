@@ -374,4 +374,20 @@ def test_add_sources_to_file():
         assert lines[4] == "https://www.youtube.com/watch?v=vidFromFile"
 
 
+def test_resolve_source_inputs_with_quotes_and_files():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        sample_file = Path(tmp_dir) / "links.txt"
+        sample_file.write_text(
+            '# Comment\n"https://www.youtube.com/watch?v=vidSample1",\n\'https://www.youtube.com/watch?v=vidSample2\'\n',
+            encoding="utf-8-sig",
+        )
+        resolved = resolve_source_inputs([str(sample_file), '"https://youtu.be/vidSample3",'])
+        assert resolved == [
+            "https://www.youtube.com/watch?v=vidSample1",
+            "https://www.youtube.com/watch?v=vidSample2",
+            "https://youtu.be/vidSample3",
+        ]
+
+
+
 
