@@ -1,5 +1,6 @@
 # Konuşan kişi ekranda; dış ses beklenmiyor.
-# Her satıra bir YouTube video veya playlist URL'si yaz.
+# Öneri: Mükerrerleri ve çakışmaları önlemek için linkleri 'ytavsr add "<URL>"' ile ekleyin.
+# Doğrudan eklemek için satır başına bir YouTube video veya playlist URL'si yazın.
 
 https://www.youtube.com/playlist?list=PLExjJMFi3zic
 https://www.youtube.com/watch?v=bX55e0NkaYw&list=PLMQlm6cpeS1Aedba_G6GF0tceV7L_R5xP

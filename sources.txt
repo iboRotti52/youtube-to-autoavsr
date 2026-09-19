@@ -1,4 +1,5 @@
-# Her satıra bir YouTube video veya playlist linki yaz.
+# Öneri: Mükerrerleri ve çakışmaları önlemek için linkleri 'ytavsr add "<URL>"' ile ekleyin.
+# Doğrudan eklemek için satır başına bir YouTube video veya playlist URL'si yazın.
 # Boş satırlar ve # ile başlayan satırlar yok sayılır.
 #
 # Otomatik algılama:

@@ -16,49 +16,20 @@ Kisaca yaptigi is:
 > Panel, roportaj, coklu yuz veya ekranda konusmayan dis ses agirlikli videolar
 > icin uygun degildir.
 
-## Hangi Dosyaya Link Yazacagim?
+## Video Linkleri Nasıl Eklenir? (Önerilen Yöntem: `ytavsr add`)
 
-Repo icinde kaynak ve takip dosyalari bulunur:
+Dosyaları elle açıp düzenlemek Git çakışmalarına (conflict) ve mükerrer linklere yol açabileceğinden, tüm link ekleme işlemleri için **`ytavsr add`** komutunu kullanın.
 
-```text
-sources_no_voiceover.txt
-sources_voiceover.txt
-processed_sources.txt
-```
+Bu komut otomatik olarak:
+1. `git pull` yaparak ekip arkadaşlarının eklediği son linkleri çeker.
+2. Eklenen linki Video ID bazında denetler (işlenmişse veya listede varsa uyarır, tekrar eklemez).
+3. Linkteki gereksiz izleme ve oynatma listesi parametrelerini temizler.
+4. Dosyaya ekleyip `git commit` ve `git push` ile GitHub'a otomatik gönderir (ekip anında güncel listeyi görür).
 
-Video turune gore linki bu dosyalardan birine yaz:
-
-| Dosya | Ne zaman kullanilir? |
-| --- | --- |
-| `sources_no_voiceover.txt` | Ekrandaki kisi konusuyor, dis ses/dublaj yok. |
-| `sources_voiceover.txt` | Anlatici, dis ses, dublaj veya ekrandaki agizla her zaman eslesmeyen ses olabilir. |
-| `processed_sources.txt` | Daha once islenmis ve buluta aktarilmis videolar. Buradaki videolar otomatik olarak atlanir (tekrar islenmez). |
-
-Her satira bir YouTube linki yaz:
-
-```text
-https://www.youtube.com/watch?v=VIDEO_ID
-https://www.youtube.com/playlist?list=PLAYLIST_ID
-```
-
-Yorum eklemek icin satirin basina `#` koyabilirsin:
-
-```text
-# Tek konusmacili egitim videolari
-https://www.youtube.com/watch?v=VIDEO_ID
-```
-
-### Otomatik Link Ekleme: `ytavsr add` (Tekli veya Toplu)
-
-Dosyaları elle açıp düzenlemek yerine `ytavsr add` komutunu kullanabilirsiniz. Bu komut otomatik olarak:
-1. `git pull` yaparak arkadaşlarınızın son eklemelerini alır.
-2. Linkleri Video ID bazında kontrol eder (işlenmiş veya zaten listede olanları eler).
-3. Yeni linkleri dosyaya ekleyip `git commit` ve `git push` ile GitHub'a gönderir (ekip anında görür).
-
-**Kullanım Örnekleri:**
+### Kullanım Örnekleri
 
 ```bash
-# 1. Tek video eklemek:
+# 1. Tek video eklemek (varsayılan: no_voiceover):
 ytavsr add "https://www.youtube.com/watch?v=VIDEO_ID"
 
 # 2. Birden fazla videoyu aynı anda eklemek:
@@ -67,12 +38,24 @@ ytavsr add "https://youtu.be/VID1" "https://youtu.be/VID2" "https://youtu.be/VID
 # 3. Bir metin dosyasındaki tüm linkleri topluca eklemek:
 ytavsr add yeni_linkler.txt
 
-# 4. Dış ses / dublaj içeren videolar için (sources_voiceover.txt):
+# 4. Dış ses / dublaj / anlatıcı içeren videolar için:
 ytavsr add "https://www.youtube.com/watch?v=VIDEO_ID" --voiceover
 
 # 5. Sadece yerel dosyaya eklemek (GitHub'a hemen push yapmamak):
 ytavsr add "https://www.youtube.com/watch?v=VIDEO_ID" --no-push
 ```
+
+### Video Profilleri ve Kaynak Dosyaları
+
+Sistem videoları türüne göre iki dosyaya ayırır:
+
+| Profil | Dosya | Ekleme Komutu | Ne zaman kullanılır? |
+| --- | --- | --- | --- |
+| `no_voiceover` | `sources_no_voiceover.txt` | `ytavsr add "URL"` | Ekrandaki kişi konuşuyor, dış ses/dublaj yok (varsayılan). Lip-sync esnektir. |
+| `voiceover` | `sources_voiceover.txt` | `ytavsr add "URL" --voiceover` | Anlatıcı, dış ses, dublaj olabilir. Ses varken ağız oynamıyorsa klip elenir. |
+| Takip | `processed_sources.txt` | Otomatik güncellenir | Daha önce işlenmiş videolar. Otomatik olarak atlanır. |
+
+> **Manuel Düzenleme:** Dosyaları doğrudan metin editörüyle düzenlediyseniz veya toplu yapıştırma yaptıysanız, mükerrerleri temizlemek için `ytavsr dedup-sources` komutunu çalıştırabilirsiniz.
 
 ## En Kisa Kullanim
 
@@ -202,8 +185,13 @@ ytavsr-setup
 
 ### 5. Linkleri ekle ve calistir
 
-Linkleri `sources_no_voiceover.txt` veya `sources_voiceover.txt` dosyasina yaz.
-Sonra:
+Videolari projeye eklemek icin (otomatik git pull, mukerrer kontrolu ve push ile):
+
+```bash
+ytavsr add "https://www.youtube.com/watch?v=VIDEO_ID"
+```
+
+Ardindan veri uretimini baslat:
 
 ```bash
 ytavsr
@@ -268,9 +256,13 @@ Bu durumda RetinaFace yerine MediaPipe kullanilir.
 
 ### 5. Linkleri ekle ve calistir
 
-Linkleri `sources_no_voiceover.txt` veya `sources_voiceover.txt` dosyasina yaz.
+Videolari projeye eklemek icin:
 
-PowerShell'de sanal ortam aktifken:
+```powershell
+yt2avsr add "https://www.youtube.com/watch?v=VIDEO_ID"
+```
+
+PowerShell'de sanal ortam aktifken veri uretimini baslat:
 
 ```powershell
 yt2avsr process-both-sources --config configs/default.yaml
@@ -394,7 +386,7 @@ Iki profil vardir:
 | `no_voiceover` | `sources_no_voiceover.txt` | Sesin ekrandaki konusmaciya ait oldugu varsayilir. Lip-sync kontrolu daha toleranslidir. |
 | `voiceover` | `sources_voiceover.txt` | Dis ses/dublaj olabilir. Ses varken agiz hareket etmiyorsa klip reddedilir. |
 
-Dis ses iceren videolari mutlaka `sources_voiceover.txt` dosyasina koy.
+Dis ses iceren videolari eklerken her zaman `--voiceover` parametresini kullan: `ytavsr add "URL" --voiceover`.
 
 ## Sorun Giderme
 

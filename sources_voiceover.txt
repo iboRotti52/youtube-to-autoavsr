@@ -1,4 +1,5 @@
 # Dış ses / B-roll / slayt içerebilen videolar.
-# Her satıra bir YouTube video veya playlist URL'si yaz.
+# Öneri: Mükerrerleri ve çakışmaları önlemek için linkleri 'ytavsr add "<URL>" --voiceover' ile ekleyin.
+# Doğrudan eklemek için satır başına bir YouTube video veya playlist URL'si yazın.
 
 

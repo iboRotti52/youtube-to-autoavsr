@@ -132,21 +132,39 @@ yt2avsr sync-processed --config configs/default.yaml
 
 Bu sayede `processed_sources.txt` güncellenir ve diğer ekip üyelerinin işlediği videolar senin listende olsa bile otomatik atlanır.
 
-### 3.3 Kendi videolarını işle (veya ekiple paylaşımlı çalış)
+### 3.3 Videoları ekle ve işle (veya ekiple paylaşımlı çalış)
 
-Bulduğun YouTube linklerini `sources_no_voiceover.txt` (veya voiceover'lı olanları
-`sources_voiceover.txt`) dosyasına, satır başına bir link olacak şekilde yaz.
+Linkleri dosyalara elle yapıştırmak Git çakışmalarına (conflict) ve mükerrer videolara yol açabilir. Bunun yerine her zaman **`ytavsr add`** (veya Windows'ta `yt2avsr add`) komutunu kullanın.
+
+Bu komut otomatik olarak:
+1. Ekip arkadaşlarının eklediği son linkleri çeker (`git pull`).
+2. Mükerrer veya önceden işlenmiş videoları filtreler.
+3. Dosyaya ekleyip GitHub'a otomatik yükler (`git push`).
+
+```bash
+# Tek video eklemek:
+ytavsr add "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# Birden fazla videoyu aynı anda eklemek:
+ytavsr add "URL1" "URL2" "URL3"
+
+# Dosyadan topluca eklemek:
+ytavsr add linkler.txt
+
+# Dış ses / dublaj içeren videolar için:
+ytavsr add "URL" --voiceover
+```
 
 **3 kişi aynı anda çalışıyorsanız, çakışmayı önlemek için `--shard` kullanın:**
-- 1. Bilgisayar: `yt2avsr process-both-sources --shard 0/3`
-- 2. Bilgisayar: `yt2avsr process-both-sources --shard 1/3`
-- 3. Bilgisayar: `yt2avsr process-both-sources --shard 2/3`
+- 1. Bilgisayar: `ytavsr --shard 0/3`
+- 2. Bilgisayar: `ytavsr --shard 1/3`
+- 3. Bilgisayar: `ytavsr --shard 2/3`
 
-Tek başına çalışıyorsan parametresiz:
+Tek başına çalışıyorsan:
 ```bash
+ytavsr
+# veya:
 yt2avsr process-both-sources --config configs/default.yaml
-# veya tek liste:
-yt2avsr process-sources sources_no_voiceover.txt --config configs/default.yaml
 ```
 
 Çıktı lokalde `data/clips/...` altında oluşur ve `data/manifests/accepted.csv`
