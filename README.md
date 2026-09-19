@@ -10,7 +10,8 @@ YouTube videolarından Türkçe dudak okuma (**Auto-AVSR**) modeli eğitimi içi
    - **Modal GPU:** Resmi Auto-AVSR **RetinaFace** + FAN yüz takipçisi (`mouth.mp4`).
    - **Yerel Mac/CPU:** Hızlı **MediaPipe** yüz takipçisi.
 5. **Kalite & Dudak Senkronizasyonu (Lip-Sync):** Dış ses/dublaj tespiti, ağız açıklığı, hareket ve benzerlik filtreleri uygular; veriyi `accepted`, `review`, `rejected` olarak gruplar.
-6. **Hugging Face Senkronizasyonu:** Kabul edilen klipleri doğrudan ortak bulut deposuna (`iboRotti/avsr-tr-dataset`) yükler.
+6. **Hugging Face Senkronizasyonu:** Kabul edilen klipleri doğrudan ortak bulut deposuna (`avsr-tr-ekip/avsr-tr-dataset`) yükler.
+
 
 ---
 

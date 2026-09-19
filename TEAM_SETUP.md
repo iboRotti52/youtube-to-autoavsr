@@ -101,25 +101,15 @@ git push
 
 ### 2.4 Arkadaşlarına HF yazma erişimi ver (ÇOK ÖNEMLİ!)
 
-Hugging Face'te kişisel hesap altındaki repolara (`iboRotti/avsr-tr-dataset`) varsayılan olarak **yalnızca repo sahibi** yazabilir. Arkadaşların kendi kişisel HF token'ları ile doğrudan senin repoya yazmaya çalışırlarsa Hugging Face `403 Forbidden` (yazma yetkisi yok) hatası verir.
+Dataset organizasyon (`avsr-tr-ekip/avsr-tr-dataset`) altına taşınmıştır. Ekip arkadaşlarının doğrudan bu repoya veri yükleyebilmesi için organizasyona eklenmeleri gerekir:
 
-Bunu çözmenin iki çok kolay yolu vardır:
+1. [huggingface.co/avsr-tr-ekip](https://huggingface.co/avsr-tr-ekip) sayfasına gidin.
+2. Sağ üstteki **"Organization settings"** → **"Members"** sekmesine gelin.
+3. **"Invite a member"** butonuna basarak Damla ve İbrahim Billurcu'nun Hugging Face kullanıcı adlarını (veya e-postalarını) ekleyin.
+4. Rol olarak **"Write"** seçin ve onaylayın.
 
-#### Seçenek 1: Write Yetkili Token'ı Paylaş (En Hızlı ve Pratik Yol ⭐)
-1. Kendi Hugging Face hesabında: [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) → **New token** → Role: **Write** seç → oluştur.
-2. Bu token'ı Damla ve İbrahim Billurcu ile paylaş.
-3. Onlar kendi bilgisayarlarında terminalden:
-   ```bash
-   huggingface-cli login
-   ```
-   komutunu çalıştırıp bu ortak Write token'ını yapıştırırlar (veya Modal komutunda `--hf-token "hf_..."` parametresi olarak verirler).
-> 💡 **Klasörler karışır mı?** Hayır! Token ortak olsa dahi Modal veya local pipeline çalışırken her üye kendi adıyla çalışır (`data/damla/...`, `data/ibrahim-billurcu/...`). Dolayısıyla kimse kimsenin verisini ezmez.
+> 💡 **Sonuç:** Daveti kabul ettiklerinde artık her üye **kendi kişisel HF token'ı** ile doğrudan bu depoya yazabilir. Yüklenen veriler her üyenin kendi klasöründe toplanır (`data/damla/...`, `data/ibrahim-billurcu/...`, `data/ibrahim-gozlukaya/...`).
 
-#### Seçenek 2: Ücretsiz Hugging Face Organizasyonu Aç (Alternatif / Profesyonel Yol)
-1. Hugging Face'te sağ üst profil → **New Organization** → Örn. `avsr-tr` adında ücretsiz bir organizasyon kur.
-2. Organizasyonun **Members** sekmesinden Damla ve İbrahim Billurcu'yu **Write** rolüyle davet et.
-3. Dataset'i organizasyon altına taşı (`avsr-tr/avsr-tr-dataset`) ve `configs/default.yaml` içindeki `repo_id`'yi güncelle.
-4. Bu durumda herkes kendi bireysel token'ı ile repoya yazabilir.
 
 
 ---
@@ -296,7 +286,8 @@ ytavsr modal --download-local
 ```
 
 ### 5.4 İşlem Sonrası Ne Olur?
-1. Modal'daki GPU container'ı işlenen klipleri doğrudan ortak Hugging Face dataset'ine (`iboRotti/avsr-tr-dataset`) yükler (`data/<kullanıcı-adınız>/...`).
+1. Modal'daki GPU container'ı işlenen klipleri doğrudan ortak Hugging Face dataset'ine (`avsr-tr-ekip/avsr-tr-dataset`) yükler (`data/<kullanıcı-adınız>/...`).
+
 2. Hugging Face'teki ve yerelinizdeki `processed_sources.txt` listesi otomatik güncellenir.
 3. Diğer ekip arkadaşlarınız işlem başlattığında bu videolar otomatik atlanır (mükerrer işleme engellenir).
 
