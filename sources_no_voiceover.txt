@@ -2,3 +2,12 @@
 # Her satıra bir YouTube video veya playlist URL'si yaz.
 
 https://www.youtube.com/playlist?list=PLExjJMFi3zic
+https://www.youtube.com/watch?v=bX55e0NkaYw&list=PLMQlm6cpeS1Aedba_G6GF0tceV7L_R5xP
+https://www.youtube.com/watch?v=F7lTGCZofNA&list=PLMQlm6cpeS1Aedba_G6GF0tceV7L_R5xP&index=2
+https://www.youtube.com/watch?v=ZDi-wL1ceXo&list=PLMQlm6cpeS1Aedba_G6GF0tceV7L_R5xP&index=3
+https://www.youtube.com/watch?v=GNpYXoUCKB0&list=PLMQlm6cpeS1Aedba_G6GF0tceV7L_R5xP&index=4
+https://www.youtube.com/watch?v=DLiqfw12Gsg&list=PLMQlm6cpeS1Aedba_G6GF0tceV7L_R5xP&index=5
+https://www.youtube.com/watch?v=HzVUHkm2A7w&list=PLMQlm6cpeS1Aedba_G6GF0tceV7L_R5xP&index=6
+https://www.youtube.com/watch?v=0--5ZauH6J0
+https://www.youtube.com/watch?v=xyLFOrVOSno
+https://www.youtube.com/watch?v=xIAV4Ns2Esw
