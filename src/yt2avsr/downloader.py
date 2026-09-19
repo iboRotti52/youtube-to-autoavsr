@@ -31,7 +31,7 @@ def _ydl_options(
         "writeinfojson": True,
         "noplaylist": not playlist,
         "quiet": False,
-        "ignoreerrors": False,
+        "ignoreerrors": True,
         "retries": cfg.retries,
         "fragment_retries": cfg.fragment_retries,
         "socket_timeout": cfg.socket_timeout,
