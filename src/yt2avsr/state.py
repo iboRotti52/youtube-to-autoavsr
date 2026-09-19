@@ -27,7 +27,9 @@ class StateDB:
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        con = sqlite3.connect(self.path)
+        con = sqlite3.connect(self.path, timeout=60.0)
+        con.execute("PRAGMA journal_mode=WAL;")
+        con.execute("PRAGMA busy_timeout=60000;")
         try:
             yield con
             con.commit()

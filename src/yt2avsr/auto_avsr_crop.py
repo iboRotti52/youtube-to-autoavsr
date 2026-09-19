@@ -1,5 +1,5 @@
 from __future__ import annotations
-import sys
+import sys, threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -13,7 +13,9 @@ class CropMetrics:
     sharpness: float
 
 _CACHE = {}
+_CACHE_LOCK = threading.Lock()
 _LANDMARK_CACHE = {}
+_LANDMARK_LOCK = threading.Lock()
 
 
 class NoUsableFaceError(RuntimeError):
@@ -48,34 +50,35 @@ def _device(value: str) -> str:
 def _get_components(cfg: AutoAVSRConfig):
     repo = cfg.repo_dir.resolve()
     key = (str(repo), cfg.detector, _device(cfg.device))
-    if key in _CACHE:
-        return _CACHE[key]
+    with _CACHE_LOCK:
+        if key in _CACHE:
+            return _CACHE[key]
 
-    if not (repo / "preparation").exists():
-        raise RuntimeError(
-            f"Official Auto-AVSR repository not found at {repo}. "
-            "Run: yt2avsr setup-external"
-        )
-    sys.path.insert(0, str(repo))
-    try:
-        if cfg.detector == "retinaface":
-            from preparation.detectors.retinaface.detector import LandmarksDetector
-            from preparation.detectors.retinaface.video_process import VideoProcess
-        elif cfg.detector == "mediapipe":
-            from preparation.detectors.mediapipe.detector import LandmarksDetector
-            from preparation.detectors.mediapipe.video_process import VideoProcess
-        else:
-            raise ValueError(f"Unsupported official detector: {cfg.detector}")
-        if cfg.detector == "retinaface":
-            detector = LandmarksDetector(device=_device(cfg.device))
-        else:
-            detector = LandmarksDetector()
-        processor = VideoProcess(convert_gray=False)
-        _CACHE[key] = (detector, processor)
-        return detector, processor
-    finally:
-        if sys.path and sys.path[0] == str(repo):
-            sys.path.pop(0)
+        if not (repo / "preparation").exists():
+            raise RuntimeError(
+                f"Official Auto-AVSR repository not found at {repo}. "
+                "Run: yt2avsr setup-external"
+            )
+        sys.path.insert(0, str(repo))
+        try:
+            if cfg.detector == "retinaface":
+                from preparation.detectors.retinaface.detector import LandmarksDetector
+                from preparation.detectors.retinaface.video_process import VideoProcess
+            elif cfg.detector == "mediapipe":
+                from preparation.detectors.mediapipe.detector import LandmarksDetector
+                from preparation.detectors.mediapipe.video_process import VideoProcess
+            else:
+                raise ValueError(f"Unsupported official detector: {cfg.detector}")
+            if cfg.detector == "retinaface":
+                detector = LandmarksDetector(device=_device(cfg.device))
+            else:
+                detector = LandmarksDetector()
+            processor = VideoProcess(convert_gray=False)
+            _CACHE[key] = (detector, processor)
+            return detector, processor
+        finally:
+            if sys.path and sys.path[0] == str(repo):
+                sys.path.pop(0)
 
 def _read_rgb_frames(source: Path) -> tuple[np.ndarray, float]:
     """Read a clip as an (T, H, W, 3) RGB uint8 array, matching what the official
@@ -129,36 +132,37 @@ def _read_cached_landmarks(source: Path, cfg: AutoAVSRConfig) -> tuple[list, flo
         cfg.detector,
         _device(cfg.device),
     )
-    if key in _LANDMARK_CACHE:
-        return _LANDMARK_CACHE[key]
+    with _LANDMARK_LOCK:
+        if key in _LANDMARK_CACHE:
+            return _LANDMARK_CACHE[key]
 
-    detector, _ = _get_components(cfg)
-    cap = cv2.VideoCapture(str(source))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    landmarks = []
-    batch = []
-    batch_size = 250
+        detector, _ = _get_components(cfg)
+        cap = cv2.VideoCapture(str(source))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        landmarks = []
+        batch = []
+        batch_size = 250
 
-    try:
-        while True:
-            ok, frame = cap.read()
-            if not ok:
-                break
-            batch.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            if len(batch) >= batch_size:
+        try:
+            while True:
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                batch.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                if len(batch) >= batch_size:
+                    landmarks.extend(_detect_landmarks(detector, np.asarray(batch)))
+                    batch.clear()
+
+            if batch:
                 landmarks.extend(_detect_landmarks(detector, np.asarray(batch)))
-                batch.clear()
+        finally:
+            cap.release()
 
-        if batch:
-            landmarks.extend(_detect_landmarks(detector, np.asarray(batch)))
-    finally:
-        cap.release()
+        if not landmarks:
+            raise RuntimeError("Source video has no frames for landmark cache")
 
-    if not landmarks:
-        raise RuntimeError("Source video has no frames for landmark cache")
-
-    _LANDMARK_CACHE[key] = (landmarks, float(fps) or 25.0)
-    return _LANDMARK_CACHE[key]
+        _LANDMARK_CACHE[key] = (landmarks, float(fps) or 25.0)
+        return _LANDMARK_CACHE[key]
 
 
 def _copy_landmarks(landmarks: Sequence, start: int, length: int) -> list:

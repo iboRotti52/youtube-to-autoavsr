@@ -137,3 +137,8 @@ cloud:
   repo_id: "avsr-tr-ekip/avsr-tr-dataset"
   private: true
 
+processing:
+  # Apple M4 ve çok çekirdekli sistemler için eşzamanlı çalışan iş parçacığı sayısı
+  max_workers: 4
+
+

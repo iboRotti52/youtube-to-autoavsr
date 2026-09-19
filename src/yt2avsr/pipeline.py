@@ -243,8 +243,29 @@ class Pipeline:
             outputs=[segments_path],
         )
 
-        for seg in read_json(segments_path):
-            self._process_segment(item, normalized, seg)
+        segments = read_json(segments_path)
+        if not self.cfg.active_speaker.enabled and segments:
+            try:
+                from .auto_avsr_crop import _read_cached_landmarks
+                _read_cached_landmarks(normalized, self.cfg.auto_avsr)
+            except Exception as exc:
+                print(f"[warning] Pre-caching landmarks skipped: {exc}", flush=True)
+
+        workers = getattr(self.cfg, "processing", None)
+        max_workers = workers.max_workers if workers else 4
+        if max_workers > 1 and len(segments) > 1:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            print(f"[parallel] Processing {len(segments)} segments with {max_workers} worker threads...", flush=True)
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(self._process_segment, item, normalized, seg): seg
+                    for seg in segments
+                }
+                for f in as_completed(futures):
+                    f.result()
+        else:
+            for seg in segments:
+                self._process_segment(item, normalized, seg)
 
     def _process_segment(self, item, normalized, segment):
         iid, sid = item["id"], segment["segment_id"]

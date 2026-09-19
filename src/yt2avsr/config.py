@@ -135,6 +135,10 @@ class SourcesConfig(BaseModel):
     # Automatically sync processed videos from Hugging Face on pipeline startup
     auto_sync_hf: bool = True
 
+class ProcessingConfig(BaseModel):
+    # Number of concurrent worker threads for segment & clip processing
+    max_workers: int = 4
+
 class AppConfig(BaseModel):
     workspace: Path = Path("data")
     language: str = "tr"
@@ -148,6 +152,7 @@ class AppConfig(BaseModel):
     visual_quality: VisualQualityConfig = Field(default_factory=VisualQualityConfig)
     quality: QualityConfig = Field(default_factory=QualityConfig)
     cloud: CloudConfig = Field(default_factory=CloudConfig)
+    processing: ProcessingConfig = Field(default_factory=ProcessingConfig)
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     merged = dict(base)
