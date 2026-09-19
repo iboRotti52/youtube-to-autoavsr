@@ -229,6 +229,109 @@ def deduplicate_source_file(
     return len(duplicates), duplicates
 
 
+def resolve_source_inputs(items: Iterable[str]) -> list[str]:
+    """Expand a list of items which may contain URLs, IDs, or paths to files."""
+    resolved: list[str] = []
+    for item in items:
+        raw = item.strip()
+        if not raw:
+            continue
+        path_candidate = Path(raw)
+        if path_candidate.exists() and path_candidate.is_file():
+            for line in path_candidate.read_text(encoding="utf-8").splitlines():
+                stripped_line = line.strip()
+                if stripped_line and not stripped_line.startswith("#"):
+                    resolved.append(stripped_line)
+        else:
+            resolved.append(raw)
+    return resolved
+
+
+def add_sources_to_file(
+    items: Iterable[str],
+    target_path: Path = Path("sources_no_voiceover.txt"),
+    *,
+    processed_path: Path = Path("processed_sources.txt"),
+    other_source_path: Path | None = None,
+    canonicalize: bool = True,
+) -> dict[str, list[str]]:
+    """Add new source URLs or file paths to a target sources file, filtering duplicates.
+
+    Returns a dictionary with:
+      - 'added': list of newly added URLs
+      - 'duplicates': list of items already in target file or duplicated in input
+      - 'already_processed': list of items already in processed_sources.txt
+      - 'cross_file_warnings': list of items also present in other_source_path
+      - 'invalid': list of unrecognized/invalid items
+    """
+    resolved = resolve_source_inputs(items)
+
+    # Load existing target file keys
+    target_keys: set[str] = set()
+    if target_path.exists():
+        for line in target_path.read_text(encoding="utf-8").splitlines():
+            k = get_source_key(line)
+            if k:
+                target_keys.add(k)
+
+    # Load processed keys
+    processed_ids = load_processed_ids(processed_path)
+
+    # Load other source file keys if provided
+    other_keys: set[str] = set()
+    if other_source_path and other_source_path.exists():
+        for line in other_source_path.read_text(encoding="utf-8").splitlines():
+            k = get_source_key(line)
+            if k:
+                other_keys.add(k)
+
+    added: list[str] = []
+    duplicates: list[str] = []
+    already_processed: list[str] = []
+    cross_warnings: list[str] = []
+    invalid: list[str] = []
+
+    lines_to_append: list[str] = []
+
+    for item in resolved:
+        k = get_source_key(item)
+        if not k:
+            invalid.append(item)
+            continue
+
+        if is_source_processed(item, processed_ids):
+            already_processed.append(item)
+            continue
+
+        if k in target_keys:
+            duplicates.append(item)
+            continue
+
+        if k in other_keys:
+            cross_warnings.append(item)
+
+        target_keys.add(k)
+        cleaned = canonicalize_source(item) if canonicalize else item
+        added.append(cleaned)
+        lines_to_append.append(cleaned)
+
+    if lines_to_append:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        current_content = target_path.read_text(encoding="utf-8") if target_path.exists() else ""
+        separator = "\n" if current_content and not current_content.endswith("\n") else ""
+        text_to_append = separator + "\n".join(lines_to_append) + "\n"
+        with target_path.open("a", encoding="utf-8") as f:
+            f.write(text_to_append)
+
+    return {
+        "added": added,
+        "duplicates": duplicates,
+        "already_processed": already_processed,
+        "cross_file_warnings": cross_warnings,
+        "invalid": invalid,
+    }
+
+
 def load_processed_ids(path: Path = Path("processed_sources.txt")) -> set[str]:
     """Load all processed video IDs and URLs from a tracking file."""
     if not path.exists():

@@ -48,6 +48,32 @@ Yorum eklemek icin satirin basina `#` koyabilirsin:
 https://www.youtube.com/watch?v=VIDEO_ID
 ```
 
+### Otomatik Link Ekleme: `ytavsr add` (Tekli veya Toplu)
+
+Dosyaları elle açıp düzenlemek yerine `ytavsr add` komutunu kullanabilirsiniz. Bu komut otomatik olarak:
+1. `git pull` yaparak arkadaşlarınızın son eklemelerini alır.
+2. Linkleri Video ID bazında kontrol eder (işlenmiş veya zaten listede olanları eler).
+3. Yeni linkleri dosyaya ekleyip `git commit` ve `git push` ile GitHub'a gönderir (ekip anında görür).
+
+**Kullanım Örnekleri:**
+
+```bash
+# 1. Tek video eklemek:
+ytavsr add "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# 2. Birden fazla videoyu aynı anda eklemek:
+ytavsr add "https://youtu.be/VID1" "https://youtu.be/VID2" "https://youtu.be/VID3"
+
+# 3. Bir metin dosyasındaki tüm linkleri topluca eklemek:
+ytavsr add yeni_linkler.txt
+
+# 4. Dış ses / dublaj içeren videolar için (sources_voiceover.txt):
+ytavsr add "https://www.youtube.com/watch?v=VIDEO_ID" --voiceover
+
+# 5. Sadece yerel dosyaya eklemek (GitHub'a hemen push yapmamak):
+ytavsr add "https://www.youtube.com/watch?v=VIDEO_ID" --no-push
+```
+
 ## En Kisa Kullanim
 
 Kurulumdan sonra sadece sunu calistir:

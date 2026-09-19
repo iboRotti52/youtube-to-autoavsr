@@ -10,6 +10,7 @@ if "huggingface_hub" not in sys.modules:
     sys.modules["huggingface_hub"] = mock_hf
 
 from yt2avsr.sources import (
+    add_sources_to_file,
     append_processed_sources,
     canonicalize_source,
     deduplicate_source_file,
@@ -23,6 +24,7 @@ from yt2avsr.sources import (
     load_processed_ids,
     parse_shard,
     partition_sources,
+    resolve_source_inputs,
     sync_processed_from_hf,
 )
 
@@ -249,5 +251,98 @@ def test_deduplicate_source_file():
         assert updated_content[0] == "# Test file"
         assert "index=1" in updated_content[1]
         assert "otherVid001" in updated_content[2]
+
+
+def test_resolve_source_inputs():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        batch_file = Path(tmpdir) / "batch.txt"
+        batch_file.write_text(
+            "# A comment line\n"
+            "https://youtu.be/fileVid0001\n"
+            "\n"
+            "https://youtu.be/fileVid0002\n",
+            encoding="utf-8",
+        )
+
+        inputs = [
+            "https://youtu.be/singleVid01",
+            str(batch_file),
+            "https://youtu.be/singleVid02",
+        ]
+
+        resolved = resolve_source_inputs(inputs)
+        assert resolved == [
+            "https://youtu.be/singleVid01",
+            "https://youtu.be/fileVid0001",
+            "https://youtu.be/fileVid0002",
+            "https://youtu.be/singleVid02",
+        ]
+
+
+def test_add_sources_to_file():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        target = Path(tmpdir) / "sources_no_voiceover.txt"
+        target.write_text(
+            "# Header\n"
+            "https://www.youtube.com/watch?v=vidAlrdyIn1\n",
+            encoding="utf-8",
+        )
+        proc = Path(tmpdir) / "processed_sources.txt"
+        proc.write_text(
+            "https://www.youtube.com/watch?v=vidProcDone\n",
+            encoding="utf-8",
+        )
+        other = Path(tmpdir) / "sources_voiceover.txt"
+        other.write_text(
+            "https://www.youtube.com/watch?v=vidVoiceov1\n",
+            encoding="utf-8",
+        )
+
+        batch_file = Path(tmpdir) / "incoming.txt"
+        batch_file.write_text(
+            "https://youtu.be/vidFromFile\n"
+            "https://www.youtube.com/watch?v=vidAlrdyIn1\n",
+            encoding="utf-8",
+        )
+
+        to_add = [
+            "https://www.youtube.com/watch?v=vidBrandNew&list=PL123&index=1",  # clean video
+            "https://youtu.be/vidProcDone",  # already processed -> skip
+            "https://youtu.be/vidVoiceov1",  # cross file warning, but add
+            str(batch_file),  # 1 new, 1 duplicate in target
+        ]
+
+        result = add_sources_to_file(
+            to_add,
+            target_path=target,
+            processed_path=proc,
+            other_source_path=other,
+            canonicalize=True,
+        )
+
+        assert len(result["added"]) == 3
+        # Should be canonicalized:
+        assert "https://www.youtube.com/watch?v=vidBrandNew" in result["added"]
+        assert "https://www.youtube.com/watch?v=vidVoiceov1" in result["added"]
+        assert "https://www.youtube.com/watch?v=vidFromFile" in result["added"]
+
+        assert len(result["already_processed"]) == 1
+        assert "https://youtu.be/vidProcDone" in result["already_processed"]
+
+        assert len(result["duplicates"]) == 1
+        assert "https://www.youtube.com/watch?v=vidAlrdyIn1" in result["duplicates"]
+
+        assert len(result["cross_file_warnings"]) == 1
+        assert "https://youtu.be/vidVoiceov1" in result["cross_file_warnings"]
+
+        # Verify file content on disk
+        lines = target.read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 5
+        assert lines[0] == "# Header"
+        assert lines[1] == "https://www.youtube.com/watch?v=vidAlrdyIn1"
+        assert lines[2] == "https://www.youtube.com/watch?v=vidBrandNew"
+        assert lines[3] == "https://www.youtube.com/watch?v=vidVoiceov1"
+        assert lines[4] == "https://www.youtube.com/watch?v=vidFromFile"
+
 
 

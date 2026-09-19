@@ -7,6 +7,7 @@ from .config import load_config
 from .manifest import rebuild
 from .pipeline import Pipeline
 from .sources import (
+    add_sources_to_file,
     append_processed_sources,
     canonicalize_source,
     deduplicate_source_file,
@@ -85,6 +86,111 @@ def process_sources(
     job_path = _write_filtered_sources(sources, deduped) if duplicates else sources
     Pipeline(cfg, force=force, profile=profile, shard=shard_tuple).process_sources_file(job_path)
     typer.echo(f"Done: {cfg.workspace / 'manifests' / 'accepted.csv'}")
+
+
+@app.command("add")
+def add_command(
+    items: Annotated[
+        list[str],
+        typer.Argument(
+            help="One or more YouTube URLs, video IDs, or paths to .txt files containing links",
+        ),
+    ],
+    voiceover: Annotated[
+        bool,
+        typer.Option("--voiceover", "-vo", help="Add to sources_voiceover.txt instead of sources_no_voiceover.txt"),
+    ] = False,
+    push: Annotated[
+        bool,
+        typer.Option("--push/--no-push", help="Automatically commit and push changes to GitHub"),
+    ] = True,
+    pull: Annotated[
+        bool,
+        typer.Option("--pull/--no-pull", help="Automatically pull latest changes from GitHub first"),
+    ] = True,
+    canonicalize: Annotated[
+        bool,
+        typer.Option("--canonicalize/--keep-raw", help="Standardize YouTube URLs (strip list/tracking params)"),
+    ] = True,
+):
+    """Add one or more YouTube links or files of links to source files with auto git sync & deduplication."""
+    target_path = Path("sources_voiceover.txt") if voiceover else Path("sources_no_voiceover.txt")
+    other_path = Path("sources_no_voiceover.txt") if voiceover else Path("sources_voiceover.txt")
+
+    # Step 1: Git pull if requested
+    if pull:
+        try:
+            res = subprocess.run(
+                ["git", "pull", "--rebase"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if res.returncode == 0:
+                out_msg = res.stdout.strip()
+                if "Already up to date" not in out_msg and out_msg:
+                    typer.echo(f"[Git] Updated local repository: {out_msg}")
+            else:
+                typer.echo(f"[Git warning] git pull failed ({res.stderr.strip()}), proceeding locally.")
+        except Exception as exc:
+            typer.echo(f"[Git warning] git pull error: {exc}")
+
+    # Step 2: Add sources
+    result = add_sources_to_file(
+        items=items,
+        target_path=target_path,
+        other_source_path=other_path,
+        canonicalize=canonicalize,
+    )
+
+    added = result["added"]
+    duplicates = result["duplicates"]
+    already_proc = result["already_processed"]
+    cross_warn = result["cross_file_warnings"]
+    invalid = result["invalid"]
+
+    if added:
+        typer.echo(f"\nSuccessfully added {len(added)} link(s) to {target_path.name}:")
+        for a in added:
+            typer.echo(f"  + {a}")
+
+    if duplicates:
+        typer.echo(f"\nSkipped {len(duplicates)} duplicate link(s) already in {target_path.name}:")
+        for d in duplicates:
+            typer.echo(f"  - {d}")
+
+    if already_proc:
+        typer.echo(f"\nSkipped {len(already_proc)} link(s) already processed in processed_sources.txt:")
+        for p in already_proc:
+            typer.echo(f"  - {p}")
+
+    if cross_warn:
+        typer.echo(f"\n[Note] {len(cross_warn)} of the added link(s) also exist in {other_path.name}:")
+        for c in cross_warn:
+            typer.echo(f"  * {c}")
+
+    if invalid:
+        typer.echo(f"\nSkipped {len(invalid)} invalid input(s):")
+        for inv in invalid:
+            typer.echo(f"  ! {inv}")
+
+    if not added:
+        typer.echo(f"\nNo new unique links were added to {target_path.name}.")
+        return
+
+    # Step 3: Git push if requested
+    if push:
+        try:
+            subprocess.run(["git", "add", str(target_path)], check=True)
+            commit_msg = f"chore(sources): add {len(added)} link(s) to {target_path.name}"
+            subprocess.run(["git", "commit", "-m", commit_msg], check=True)
+            push_res = subprocess.run(["git", "push"], capture_output=True, text=True, check=False)
+            if push_res.returncode == 0:
+                typer.echo(f"[Git] Pushed updates to GitHub: {commit_msg}")
+            else:
+                typer.echo(f"[Git warning] git push failed ({push_res.stderr.strip()}). You can push manually later.")
+        except Exception as exc:
+            typer.echo(f"[Git warning] git commit/push error: {exc}")
 
 
 @app.command("check-downloader")
