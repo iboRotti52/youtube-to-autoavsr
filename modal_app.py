@@ -127,8 +127,20 @@ if modal is not None:
         )
 
         try:
-            pipe = Pipeline(cfg, force=False, profile=profile, shard=shard_tuple)
-            pipe.process_url(url, playlist=is_playlist)
+            items = pipe.process_url(url, playlist=is_playlist)
+            if not items:
+                print(f"[modal-worker] [{video_id}] Warning: No items downloaded from {url}.", flush=True)
+                return {
+                    "success": False,
+                    "url": url,
+                    "video_id": video_id,
+                    "profile": profile,
+                    "workspace": str(video_workspace),
+                    "error": "No items downloaded (video inaccessible, private, or download blocked)",
+                    "accepted_clips": 0,
+                    "review_clips": 0,
+                    "rejected_clips": 0,
+                }
 
             # Discover actual item directories created in clips
             clips_dir = video_workspace / "clips"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -44,7 +45,19 @@ def _ydl_options(
         "postprocessors": [
             {"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"},
         ],
+        # Avoid YouTube bot-detection blocks on cloud/datacenter IPs
+        "extractor_args": {
+            "youtube": {
+                "player_client": list(getattr(cfg, "player_clients", ["android", "ios"])),
+            }
+        },
     }
+    cookie_path = getattr(cfg, "cookies_file", None)
+    if cookie_path and Path(cookie_path).exists():
+        opts["cookiefile"] = str(cookie_path)
+    elif "YTDLP_COOKIES" in os.environ and Path(os.environ["YTDLP_COOKIES"]).exists():
+        opts["cookiefile"] = os.environ["YTDLP_COOKIES"]
+
     ff_bin = ensure_ffmpeg()
     if ff_bin:
         opts["ffmpeg_location"] = ff_bin
@@ -153,11 +166,16 @@ def download(
         shard=shard,
     )
 
-    entries = info.get("entries") if isinstance(info, dict) else None
-    items = [entry for entry in entries if entry] if entries else [info]
+    if not isinstance(info, dict):
+        return []
+
+    entries = info.get("entries")
+    items = [entry for entry in entries if isinstance(entry, dict)] if entries is not None else [info]
     results: list[dict] = []
 
     for item_idx, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
         if playlist and shard and shard[1] > 1:
             if (item_idx % shard[1]) != shard[0]:
                 continue

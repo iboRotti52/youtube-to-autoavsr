@@ -18,6 +18,8 @@ class DownloadConfig(BaseModel):
     retries: int = 10
     fragment_retries: int = 10
     socket_timeout: int = 30
+    cookies_file: str | None = None
+    player_clients: list[str] = ["android", "ios"]
 
 class NormalizationConfig(BaseModel):
     fps: int = 25
