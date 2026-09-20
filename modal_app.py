@@ -121,6 +121,12 @@ if modal is not None:
         cfg.normalization.max_height = 1080
         cfg.download.format = "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
 
+        cookies_content = job.get("cookies_content")
+        if cookies_content:
+            c_file = video_workspace / "cookies.txt"
+            c_file.write_text(cookies_content, encoding="utf-8")
+            cfg.download.cookies_file = str(c_file)
+
         print(
             f"[modal-worker] [{video_id}] Starting {url} (profile={profile}, playlist={is_playlist}) in {video_workspace}...",
             flush=True,
@@ -128,7 +134,12 @@ if modal is not None:
 
         try:
             pipe = Pipeline(cfg, force=False, profile=profile, shard=shard_tuple)
-            items = pipe.process_url(url, playlist=is_playlist)
+            if url.startswith("file://") or url.startswith("/"):
+                clean_path = Path(url.replace("file://", ""))
+                item = pipe.process_local(clean_path)
+                items = [item] if item else []
+            else:
+                items = pipe.process_url(url, playlist=is_playlist)
             if not items:
                 print(f"[modal-worker] [{video_id}] Warning: No items downloaded from {url}.", flush=True)
                 return {
@@ -239,6 +250,7 @@ if modal is not None:
         cpu: float = 4.0,
         max_containers: int = 5,
         cleanup_volume: bool = False,
+        cookies_content: str | None = None,
     ) -> dict[str, Any]:
         """Coordinator function: dispatches videos to parallel GPU workers, reloads volume, aggregates manifests, and uploads to HF."""
         import json
@@ -294,7 +306,7 @@ if modal is not None:
 
         # 2. Filter & Deduplicate
         def is_unprocessed(line: str) -> bool:
-            k = get_source_key(line)
+            k = get_source_key(line) or line
             return bool(k and k not in processed_ids)
 
         dedup_vo, _ = deduplicate_source_lines(voiceover_lines)
@@ -340,10 +352,10 @@ if modal is not None:
         # 3. Build job items for per-video workers
         job_items = []
         for i, (profile, url) in enumerate(sources_pairs):
-            raw_key = get_source_key(url) or f"video_{i:04d}"
+            raw_key = get_source_key(url) or (Path(url.replace("file://", "")).stem if ("file://" in url or "/" in url) else f"video_{i:04d}")
             # Strip prefix like 'video:' or 'playlist:' for safe directory naming
             clean_vid = raw_key.split(":", 1)[-1] if ":" in raw_key else raw_key
-            is_playlist = is_playlist_source("auto", url)
+            is_playlist = is_playlist_source("auto", url) if not (url.startswith("file://") or url.startswith("/")) else False
             job_items.append({
                 "url": url,
                 "profile": profile,
@@ -353,6 +365,7 @@ if modal is not None:
                 "hf_token": hf_token,
                 "is_playlist": is_playlist,
                 "shard": shard_tuple,
+                "cookies_content": cookies_content,
             })
 
         print(
@@ -516,9 +529,22 @@ if modal is not None:
         config: str = "configs/retina_1080p.yaml",
         cleanup_volume: bool = False,
         sources_file: str = "",
+        cookies_file: str = "",
     ):
         """CLI local entrypoint for running YouTube -> Auto-AVSR on Modal."""
         from yt2avsr.cloud import check_hf_login_or_warn, append_processed_sources
+
+        # Read cookies if provided
+        cookies_content = None
+        if cookies_file:
+            cp = Path(cookies_file)
+            if not cp.is_absolute():
+                cp = REPO_ROOT / cp
+            if cp.exists():
+                cookies_content = cp.read_text(encoding="utf-8")
+                print(f"🍪 Using cookies file: {cp}")
+            else:
+                print(f"Warning: Cookies file not found: {cookies_file}", file=sys.stderr)
 
         # Pre-flight Hugging Face check
         resolved_token, detected_user = check_hf_login_or_warn(
@@ -623,6 +649,7 @@ if modal is not None:
             cpu=cpu,
             max_containers=max_containers,
             cleanup_volume=cleanup_volume,
+            cookies_content=cookies_content,
         )
 
         success = result.get("success", False)
