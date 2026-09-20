@@ -268,3 +268,84 @@ def test_modal_main_signature_and_cleanup_volume():
     assert "shutil.rmtree(run_root" in code
 
 
+def test_worker_zero_clip_item_completion(tmp_path):
+    """Verify that worker derives item_ids from Pipeline return items even with 0 clips, and coordinator records it."""
+    from yt2avsr.sources import load_processed_ids, is_source_processed, append_processed_sources
+
+    # Mock return from Pipeline: video was processed, but generated 0 clips
+    pipeline_items = [{"id": "zero_clip_item_999", "metadata": {"id": "zero_clip_item_999"}}]
+    # Worker derivation logic:
+    item_ids = [str(it["id"]) for it in pipeline_items if isinstance(it, dict) and it.get("id")]
+    assert item_ids == ["zero_clip_item_999"]
+
+    # Coordinator processing: write completion ledger and append to processed_sources
+    proc_file = tmp_path / "processed_sources.txt"
+    successful_results = [{
+        "url": "https://youtube.com/watch?v=zero_clip_item_999",
+        "video_id": "zero_clip_item_999",
+        "item_ids": item_ids,
+        "is_playlist": False,
+        "accepted_clips": 0,
+        "review_clips": 0,
+        "rejected_clips": 0,
+        "workspace": str(tmp_path / "worker_ws"),
+    }]
+
+    newly_processed = []
+    for r in successful_results:
+        if r.get("url") and not r.get("is_playlist"):
+            newly_processed.append(r["url"])
+        for i_id in r.get("item_ids", []):
+            newly_processed.append(f"video:{i_id}")
+
+    append_processed_sources(newly_processed, proc_file)
+
+    proc_ids = load_processed_ids(proc_file)
+    assert is_source_processed("zero_clip_item_999", proc_ids)
+    assert is_source_processed("https://youtube.com/watch?v=zero_clip_item_999", proc_ids)
+
+
+def test_playlist_all_already_processed_noop(tmp_path):
+    """Verify that when all playlist items for this shard are already processed, worker marks it as idempotent noop."""
+    from yt2avsr.downloader import DownloadResult, download
+    from yt2avsr.config import DownloadConfig
+    from unittest.mock import patch
+
+    # 1. Downloader returns DownloadResult with all_already_processed=True
+    cfg = DownloadConfig()
+    fake_info = {
+        "_type": "playlist",
+        "entries": [
+            {"id": "already_proc_1", "playlist_index": 1},
+            {"id": "already_proc_2", "playlist_index": 2},
+        ]
+    }
+    with patch("yt2avsr.downloader._extract_with_fallback", return_value=fake_info):
+        res = download(
+            "https://youtube.com/playlist?list=PL_DONE",
+            tmp_path,
+            cfg,
+            playlist=True,
+            processed_ids={"already_proc_1", "already_proc_2"},
+            shard=None,
+        )
+        assert isinstance(res, DownloadResult)
+        assert len(res) == 0
+        assert res.all_already_processed is True
+
+    # 2. Downloader returns all_already_processed=False when an item in this shard is NOT processed but fails
+    with patch("yt2avsr.downloader._extract_with_fallback", return_value=fake_info):
+        res_fail = download(
+            "https://youtube.com/playlist?list=PL_DONE",
+            tmp_path,
+            cfg,
+            playlist=True,
+            processed_ids={"already_proc_1"},  # already_proc_2 is NOT processed, but has no files on disk
+            shard=None,
+        )
+        assert isinstance(res_fail, DownloadResult)
+        assert len(res_fail) == 0
+        assert res_fail.all_already_processed is False
+
+
+

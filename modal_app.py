@@ -154,6 +154,32 @@ if modal is not None:
             else:
                 items = pipe.process_url(url, playlist=is_playlist)
             if not items:
+                all_proc = (
+                    getattr(items, "all_already_processed", False)
+                    or getattr(pipe, "last_download_all_processed", False)
+                )
+                if is_playlist and all_proc:
+                    print(
+                        f"[modal-worker] [{video_id}] Idempotent no-op: All items in playlist for this shard already processed.",
+                        flush=True,
+                    )
+                    try:
+                        volume.commit()
+                    except Exception:
+                        pass
+                    return {
+                        "success": True,
+                        "url": url,
+                        "video_id": video_id,
+                        "profile": profile,
+                        "workspace": str(video_workspace),
+                        "item_ids": [],
+                        "is_playlist": True,
+                        "noop": True,
+                        "accepted_clips": 0,
+                        "review_clips": 0,
+                        "rejected_clips": 0,
+                    }
                 print(f"[modal-worker] [{video_id}] Warning: No items downloaded from {url}.", flush=True)
                 return {
                     "success": False,
@@ -161,33 +187,38 @@ if modal is not None:
                     "video_id": video_id,
                     "profile": profile,
                     "workspace": str(video_workspace),
+                    "is_playlist": is_playlist,
                     "error": "No items downloaded (video inaccessible, private, or download blocked)",
                     "accepted_clips": 0,
                     "review_clips": 0,
                     "rejected_clips": 0,
                 }
 
-            # Discover actual item directories created in clips
-            clips_dir = video_workspace / "clips"
-            item_ids = [p.name for p in clips_dir.iterdir() if p.is_dir()] if clips_dir.exists() else []
+            # Derive processed item IDs directly from Pipeline return items (not clips directory)
+            item_ids = [str(it["id"]) for it in items if isinstance(it, dict) and it.get("id")]
+            if not item_ids:
+                clips_dir = video_workspace / "clips"
+                item_ids = [p.name for p in clips_dir.iterdir() if p.is_dir()] if clips_dir.exists() else []
 
             # Count clips
+            clips_dir = video_workspace / "clips"
             accepted_count = 0
             review_count = 0
             rejected_count = 0
 
-            for meta_p in sorted(clips_dir.glob("*/*/metadata.json")):
-                try:
-                    rec = json.loads(meta_p.read_text(encoding="utf-8"))
-                    st = rec.get("quality_status")
-                    if st == "accepted":
-                        accepted_count += 1
-                    elif st == "review":
-                        review_count += 1
-                    elif st == "rejected":
-                        rejected_count += 1
-                except Exception:
-                    pass
+            if clips_dir.exists():
+                for meta_p in sorted(clips_dir.glob("*/*/metadata.json")):
+                    try:
+                        rec = json.loads(meta_p.read_text(encoding="utf-8"))
+                        st = rec.get("quality_status")
+                        if st == "accepted":
+                            accepted_count += 1
+                        elif st == "review":
+                            review_count += 1
+                        elif st == "rejected":
+                            rejected_count += 1
+                    except Exception:
+                        pass
 
             print(
                 f"[modal-worker] [{video_id}] Finished: items={item_ids}, {accepted_count} accepted, {review_count} review, {rejected_count} rejected.",
@@ -487,14 +518,16 @@ if modal is not None:
         ledger_path = completions_dir / f"{run_id}.jsonl"
         with ledger_path.open("w", encoding="utf-8") as f_ledger:
             for r in successful_results:
+                is_pl = bool(r.get("is_playlist", False))
                 ledger_entry = {
                     "run_id": run_id,
                     "url": r.get("url"),
-                    "video_id": r.get("video_id"),
+                    "video_id": None if is_pl else r.get("video_id"),
+                    "playlist_id": r.get("video_id") if is_pl else None,
                     "item_ids": r.get("item_ids", []),
                     "contributor": contributor,
                     "profile": r.get("profile"),
-                    "is_playlist": bool(r.get("is_playlist", False)),
+                    "is_playlist": is_pl,
                     "accepted_clips": r.get("accepted_clips", 0),
                     "review_clips": r.get("review_clips", 0),
                     "rejected_clips": r.get("rejected_clips", 0),

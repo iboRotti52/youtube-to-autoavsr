@@ -375,7 +375,13 @@ def is_source_processed(url_or_id: str, processed_ids: set[str]) -> bool:
         return True
 
     raw = url_or_id.strip()
-    if raw in processed_ids or canonicalize_source(raw) in processed_ids:
+    clean = raw.removeprefix("video:").strip()
+    if (
+        raw in processed_ids
+        or clean in processed_ids
+        or f"video:{clean}" in processed_ids
+        or canonicalize_source(raw) in processed_ids
+    ):
         return True
     return False
 
@@ -521,15 +527,17 @@ def sync_processed_from_hf(
                     continue
                 try:
                     row = json.loads(line)
-                    item_id = row.get("item_id") or row.get("video_id")
-                    if item_id and item_id not in discovered_records:
-                        discovered_records[item_id] = {
-                            "id": item_id,
-                            "item_id": item_id,
-                            "source_url": row.get("source_url") or row.get("url") or f"https://www.youtube.com/watch?v={item_id}",
-                            "title": row.get("title"),
-                            "channel": row.get("channel"),
-                        }
+                    is_playlist = bool(row.get("is_playlist", False))
+                    if not is_playlist:
+                        item_id = row.get("item_id") or row.get("video_id")
+                        if item_id and item_id not in discovered_records:
+                            discovered_records[item_id] = {
+                                "id": item_id,
+                                "item_id": item_id,
+                                "source_url": row.get("source_url") or row.get("url") or f"https://www.youtube.com/watch?v={item_id}",
+                                "title": row.get("title"),
+                                "channel": row.get("channel"),
+                            }
                     for sub_id in row.get("item_ids", []):
                         if sub_id and sub_id not in discovered_records:
                             discovered_records[sub_id] = {

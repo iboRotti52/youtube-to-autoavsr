@@ -47,9 +47,11 @@ class Pipeline:
         self.state = StateDB(self.workspace / "state.sqlite3")
 
     def process_url(self, url: str, *, playlist: bool = False):
+        self.last_download_all_processed = False
         processed_ids = load_processed_ids(self.cfg.sources.processed_file)
         if not playlist and is_source_processed(url, processed_ids):
             print(f"[SKIP] {url}: Zaten işlenmiş ({self.cfg.sources.processed_file}), atlanıyor.")
+            self.last_download_all_processed = True
             return []
 
         items = download(
@@ -60,6 +62,7 @@ class Pipeline:
             processed_ids=processed_ids,
             shard=self.shard,
         )
+        self.last_download_all_processed = bool(getattr(items, "all_already_processed", False))
         for item in items:
             self._process_item(item)
             raw_vid = str(item.get("id", ""))

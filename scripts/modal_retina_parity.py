@@ -147,6 +147,26 @@ if modal is not None:
         if not base_records:
             return {"passed": False, "error": "No baseline records found in snapshot directory"}
 
+        # Provenance check: verify if baseline was produced with RetinaFace on T4 GPU vs MediaPipe on CPU
+        first_rec = next(iter(base_records.values()))
+        src_url = str(first_rec.get("source_url", ""))
+        is_mediapipe_local = "/Users/" in src_url or "proud-noether" in src_url
+        if is_mediapipe_local:
+            err = (
+                f"Baseline snapshot provenance mismatch: The snapshot at {base_snapshot_dir} was generated on "
+                f"local macOS CPU using MediaPipe detector (source_url={src_url!r}), NOT on NVIDIA T4 with RetinaFace. "
+                f"Cross-detector evaluation (MediaPipe baseline vs RetinaFace perf) is fundamentally invalid. "
+                f"Per specification, refusing to compare cross-detector output or loosen parity thresholds."
+            )
+            print(f"⚠️  {err}", flush=True)
+            return {
+                "passed": False,
+                "provenance_error": True,
+                "error": err,
+                "detector_baseline": "mediapipe (macOS local)",
+                "detector_perf": "retinaface (NVIDIA T4)",
+            }
+
         # 4. Run PERF pipeline with RetinaFace on T4 GPU
         print("\n" + "=" * 70)
         print("🚀 RUNNING PERF BRANCH WITH RETINAFACE ON T4 GPU...")

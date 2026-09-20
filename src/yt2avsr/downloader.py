@@ -16,6 +16,13 @@ from .utils import ensure_ffmpeg, safe_id, write_json
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".mov", ".m4v"}
 
 
+class DownloadResult(list):
+    """List of downloaded items with download metadata."""
+    def __init__(self, items: Any = (), all_already_processed: bool = False):
+        super().__init__(items)
+        self.all_already_processed = all_already_processed
+
+
 def _ydl_options(
     out_dir: Path,
     cfg: DownloadConfig,
@@ -154,7 +161,7 @@ def download(
 ) -> list[dict]:
     if not playlist and processed_ids and is_source_processed(url, processed_ids):
         print(f"[SKIP] {url}: Zaten işlenmiş (processed_sources.txt), atlanıyor.")
-        return []
+        return DownloadResult([], all_already_processed=True)
 
     raw_root.mkdir(parents=True, exist_ok=True)
     info = _extract_with_fallback(
@@ -167,12 +174,13 @@ def download(
     )
 
     if not isinstance(info, dict):
-        return []
+        return DownloadResult([], all_already_processed=False)
 
     entries = info.get("entries")
     items = [entry for entry in entries if isinstance(entry, dict)] if entries is not None else [info]
     results: list[dict] = []
 
+    shard_items = []
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -182,7 +190,24 @@ def download(
                 zero_idx = int(p_idx) - 1
                 if (zero_idx % shard[1]) != shard[0]:
                     continue
+        shard_items.append(item)
 
+    all_already_processed = False
+    if playlist:
+        if not shard_items:
+            # All items in playlist belong to other shards, or playlist has 0 entries in this shard
+            all_already_processed = True
+        else:
+            all_already_processed = all(
+                processed_ids and (
+                    str(it.get("id", "")) in processed_ids
+                    or safe_id(str(it.get("id", ""))) in processed_ids
+                    or is_source_processed(str(it.get("id", "")), processed_ids)
+                )
+                for it in shard_items
+            )
+
+    for item in shard_items:
         raw_vid = str(item.get("id", ""))
         video_id = safe_id(raw_vid)
         if processed_ids and (
@@ -219,14 +244,14 @@ def download(
         subtitle_path = None
         subtitle_language = None
         if subtitle:
-            subtitle_language, subtitle_url, subtitle_ext = subtitle
-            subtitle_path = item_dir / f"{subtitle_kind}_subtitles.{subtitle_ext}"
-            download_text(subtitle_url, subtitle_path)
+            subtitle_path = item_dir / f"subtitles.{subtitle['ext']}"
+            subtitle_language = subtitle["language"]
+            download_text(subtitle["url"], subtitle_path)
 
         metadata = {
             "id": video_id,
             "title": item.get("title"),
-            "source_url": item.get("webpage_url") or url,
+            "source_url": item.get("webpage_url") or item.get("url") or f"https://www.youtube.com/watch?v={video_id}",
             "channel": item.get("channel"),
             "channel_id": item.get("channel_id"),
             "upload_date": item.get("upload_date"),
@@ -246,7 +271,7 @@ def download(
                 "subtitle_automatic": subtitle_kind == "automatic" if subtitle_path else False,
             }
         )
-    return results
+    return DownloadResult(results, all_already_processed=all_already_processed)
 
 
 def register_local(path: Path, raw_root: Path) -> dict:

@@ -476,6 +476,70 @@ def test_downloader_playlist_sharding_no_double_modulo(tmp_path):
         assert len(res) == 2
 
 
+def test_sync_processed_from_hf_ignores_playlist_parent_id(tmp_path):
+    """Verify that completion ledger syncing does NOT record playlist parent ID/URL as a processed video."""
+    import json
+    from unittest.mock import patch
+    from yt2avsr.sources import sync_processed_from_hf, load_processed_ids, is_source_processed
+
+    # Completion ledger containing one playlist run and one single video run
+    ledger_content = "\n".join([
+        json.dumps({
+            "run_id": "run_pl_1",
+            "url": "https://www.youtube.com/playlist?list=PL_TEST_PARENT_123",
+            "playlist_id": "PL_TEST_PARENT_123",
+            "video_id": None,
+            "is_playlist": True,
+            "item_ids": ["child_vid_1", "child_vid_2"],
+            "status": "completed",
+            "accepted_clips": 10,
+            "review_clips": 0,
+            "rejected_clips": 0,
+        }),
+        json.dumps({
+            "run_id": "run_single_1",
+            "url": "https://www.youtube.com/watch?v=vid_single1",
+            "video_id": "vid_single1",
+            "is_playlist": False,
+            "item_ids": ["vid_single1"],
+            "status": "completed",
+            "accepted_clips": 5,
+            "review_clips": 0,
+            "rejected_clips": 0,
+        }),
+    ])
+
+    fake_ledger_file = tmp_path / "completions.jsonl"
+    fake_ledger_file.write_text(ledger_content, encoding="utf-8")
+
+    with patch("huggingface_hub.HfApi") as mock_api:
+        mock_api.return_value.list_repo_files.return_value = [
+            "data/contributor_a/completions/completions.jsonl",
+        ]
+        with patch("huggingface_hub.hf_hub_download", return_value=str(fake_ledger_file)):
+            proc_file = tmp_path / "processed_sources.txt"
+            records = sync_processed_from_hf("repo/id", path=proc_file)
+
+            # Records should only contain real videos: child_vid_1, child_vid_2, vid_single1
+            record_ids = {r["id"] for r in records}
+            assert "child_vid_1" in record_ids
+            assert "child_vid_2" in record_ids
+            assert "vid_single1" in record_ids
+
+            # Playlist parent ID and playlist URL must NEVER be registered as a processed video
+            assert "PL_TEST_PARENT_123" not in record_ids
+            assert "https://www.youtube.com/playlist?list=PL_TEST_PARENT_123" not in record_ids
+
+            proc_ids = load_processed_ids(proc_file)
+            assert is_source_processed("child_vid_1", proc_ids)
+            assert is_source_processed("child_vid_2", proc_ids)
+            assert is_source_processed("vid_single1", proc_ids)
+
+            assert not is_source_processed("PL_TEST_PARENT_123", proc_ids)
+            assert not is_source_processed("https://www.youtube.com/playlist?list=PL_TEST_PARENT_123", proc_ids)
+
+
+
 
 
 
