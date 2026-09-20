@@ -422,8 +422,11 @@ if modal is not None:
                 )
                 print(f"[modal-coord] Upload complete: {push_result}", flush=True)
 
-                # On successful HF push, record all evaluated videos (including 100% rejected ones) in processed_sources.txt
-                newly_processed = aggregated_records
+                # On successful HF push, record all evaluated videos (including 100% rejected or zero-clip ones) in processed_sources.txt
+                newly_processed = list(aggregated_records)
+                for r in successful_results:
+                    if r.get("url"):
+                        newly_processed.append(r["url"])
                 if newly_processed:
                     added = append_processed_sources(newly_processed, cfg.sources.processed_file)
                     print(f"[modal-coord] Recorded {added} newly processed video(s) in {cfg.sources.processed_file}.", flush=True)

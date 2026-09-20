@@ -17,6 +17,7 @@ import os
 import re
 from pathlib import Path
 from typing import Iterable
+from .sources import append_processed_sources
 
 # Files produced per segment by the pipeline.
 CLIP_FILES = (
