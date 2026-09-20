@@ -26,6 +26,9 @@ def test_process_both_sources_partitions_before_processed_filter(tmp_path, monke
     cfg.sources.processed_file = processed_file
     cfg.sources.auto_sync_hf = False
     cfg.processing.max_workers = 1
+    fake_repo = tmp_path / "external" / "auto_avsr"
+    (fake_repo / "preparation").mkdir(parents=True)
+    cfg.auto_avsr.repo_dir = fake_repo
 
     downloaded_urls = []
     monkeypatch.chdir(tmp_path)

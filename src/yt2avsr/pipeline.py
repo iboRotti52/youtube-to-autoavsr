@@ -33,6 +33,12 @@ from .utils import read_json, write_json
 from .visual_quality import analyze_visual_quality
 
 
+# Workspaces already announced in this process. process-both-sources drives
+# one Pipeline per profile against the same workspace; the runtime log and
+# preflight must still run exactly once.
+_ANNOUNCED_WORKSPACES: set[str] = set()
+
+
 class Pipeline:
     def __init__(
         self,
@@ -47,6 +53,20 @@ class Pipeline:
         self.shard = shard
         self.state = StateDB(self.workspace / "state.sqlite3")
         self._completion_path = self.workspace / "completions" / f"local_{time.time_ns()}.jsonl"
+
+    def _announce_runtime_once(self) -> None:
+        """Log detector/device and preflight local deps exactly once per run.
+
+        process-both-sources drives one Pipeline per profile, and a single
+        process_local folder run handles many videos; the log/preflight must
+        not repeat for each of them.
+        """
+        key = str(self.workspace)
+        if key in _ANNOUNCED_WORKSPACES:
+            return
+        _ANNOUNCED_WORKSPACES.add(key)
+        self._log_local_runtime()
+        self._preflight_local()
 
     def _record_completion(self, url: str, items: list[dict], *, playlist: bool) -> None:
         item_ids = [str(item.get("id", "")) for item in items if item.get("id")]
@@ -114,6 +134,7 @@ class Pipeline:
         return items
 
     def process_sources_file(self, path: Path, *, already_partitioned: bool = False):
+        self._announce_runtime_once()
         if not path.exists():
             raise FileNotFoundError(f"Sources file not found: {path}")
 
@@ -218,8 +239,7 @@ class Pipeline:
         return results
 
     def process_local(self, path: Path):
-        self._log_local_runtime()
-        self._preflight_local()
+        self._announce_runtime_once()
         p = Path(path)
         if p.is_dir():
             from .downloader import VIDEO_EXTENSIONS
@@ -247,13 +267,9 @@ class Pipeline:
 
     def _log_local_runtime(self) -> None:
         from .auto_avsr_crop import _device
-        from .transcribe import resolve_device
-        whisper_device, default_compute = resolve_device(self.cfg.transcription.device)
-        compute = (
-            default_compute
-            if self.cfg.transcription.compute_type == "auto"
-            else self.cfg.transcription.compute_type
-        )
+        from .transcribe import resolve_compute, resolve_device
+        whisper_device, _ = resolve_device(self.cfg.transcription.device)
+        compute = resolve_compute(whisper_device, self.cfg.transcription.compute_type)
         print(
             f"[local] detector={self.cfg.auto_avsr.detector} "
             f"auto_avsr_device={_device(self.cfg.auto_avsr.device)} "
@@ -264,10 +280,11 @@ class Pipeline:
 
     def _preflight_local(self) -> None:
         import shutil
-        if shutil.which("ffmpeg") is None and shutil.which("ffprobe") is None:
+        missing = [b for b in ("ffmpeg", "ffprobe") if shutil.which(b) is None]
+        if missing:
             raise RuntimeError(
-                "ffmpeg bulunamadı. Kur: macOS -> 'brew install ffmpeg' | "
-                "Ubuntu -> 'sudo apt install -y ffmpeg' | "
+                f"Eksik sistem araci: {', '.join(missing)}. Kur: macOS -> "
+                "'brew install ffmpeg' | Ubuntu -> 'sudo apt install -y ffmpeg' | "
                 "Windows -> 'winget install Gyan.FFmpeg'."
             )
         repo = self.cfg.auto_avsr.repo_dir
@@ -367,9 +384,9 @@ class Pipeline:
             # Respect cfg.transcription.num_workers (default 1) to prevent VRAM over-allocation on 16GB T4.
             if self.cfg.transcription.verify_clips:
                 try:
-                    from .transcribe import _load_model, resolve_device
-                    dev, comp = resolve_device(self.cfg.transcription.device)
-                    ctype = comp if self.cfg.transcription.compute_type == "auto" else self.cfg.transcription.compute_type
+                    from .transcribe import _load_model, resolve_compute, resolve_device
+                    dev, _ = resolve_device(self.cfg.transcription.device)
+                    ctype = resolve_compute(dev, self.cfg.transcription.compute_type)
                     _load_model(self.cfg.transcription.model, dev, ctype, num_workers=self.cfg.transcription.num_workers)
                 except Exception as exc:
                     print(f"[warning] Whisper model pre-loading failed: {exc}", flush=True)

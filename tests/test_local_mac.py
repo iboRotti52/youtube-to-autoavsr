@@ -170,7 +170,6 @@ def test_preflight_missing_external_repo_errors_clearly(tmp_path) -> None:
 def test_resolve_device_never_returns_mps() -> None:
     assert resolve_device("mps") == ("cpu", "int8")
     assert resolve_device("MPS") == ("cpu", "int8")
-    assert resolve_device("cuda") == ("cuda", "float16")
     device, compute = resolve_device("auto")
     assert device in {"cuda", "cpu"}
     assert compute in {"float16", "int8"}
@@ -192,3 +191,161 @@ def test_default_config_keeps_quality_thresholds() -> None:
     assert cfg.quality.min_asr_confidence == 0.72
     assert cfg.transcription.model == "large-v3-turbo"
     assert cfg.auto_avsr.output_size == 96
+
+
+# --- Team CLI config helper: bare commands == --config configs/default.yaml ---
+
+EXPECTED_HF_REPO = "avsr-tr-ekip/avsr-tr-dataset"
+
+
+def test_load_cli_config_defaults_to_default_yaml() -> None:
+    from yt2avsr.cli import load_cli_config
+
+    cfg = load_cli_config(None)
+    assert cfg.auto_avsr.detector == "mediapipe"
+    assert cfg.normalization.max_height == 1080
+    assert "1080" in cfg.download.format
+    assert cfg.cloud.repo_id == EXPECTED_HF_REPO
+
+
+def test_load_cli_config_explicit_wins(tmp_path) -> None:
+    from yt2avsr.cli import load_cli_config
+
+    custom = tmp_path / "custom.yaml"
+    custom.write_text("extends: retina_1080p.yaml\n", encoding="utf-8")
+    # extends resolves relative to the custom file's dir; use absolute instead.
+    custom.write_text(
+        "auto_avsr:\n  detector: retinaface\n", encoding="utf-8"
+    )
+    assert load_cli_config(custom).auto_avsr.detector == "retinaface"
+
+
+def test_load_cli_config_falls_back_without_default_yaml(tmp_path, monkeypatch) -> None:
+    import yt2avsr.cli as cli_mod
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli_mod, "_packaged_default_config", lambda: None)
+    cfg = cli_mod.load_cli_config(None)
+    # Code defaults still local-first (MediaPipe), just without default.yaml values.
+    assert cfg.auto_avsr.detector == "mediapipe"
+    assert cfg.cloud.repo_id is None
+
+
+def test_process_both_sources_uses_default_yaml_without_config(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    import yt2avsr.cli as cli_mod
+
+    (tmp_path / "sources_no_voiceover.txt").write_text(
+        "https://www.youtube.com/watch?v=team_workflow_a\n"
+    )
+    (tmp_path / "sources_voiceover.txt").write_text("")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli_mod, "sync_processed_from_hf", lambda *a, **k: [])
+
+    captured: dict = {}
+
+    class FakePipeline:
+        def __init__(self, cfg, **kwargs):
+            captured.setdefault("cfgs", []).append(cfg)
+
+        def process_sources_file(self, path, already_partitioned=False):
+            captured.setdefault("ran", []).append(path.name)
+
+    monkeypatch.setattr(cli_mod, "Pipeline", FakePipeline)
+    cli_mod.process_both_sources()
+
+    cfg = captured["cfgs"][0]
+    assert cfg.auto_avsr.detector == "mediapipe"
+    assert cfg.normalization.max_height == 1080
+    assert "1080" in cfg.download.format
+    assert cfg.cloud.repo_id == EXPECTED_HF_REPO
+
+
+def test_push_data_uses_default_yaml_repo(tmp_path, monkeypatch) -> None:
+    import yt2avsr.cli as cli_mod
+
+    monkeypatch.chdir(tmp_path)
+    pushed: dict = {}
+    monkeypatch.setattr(
+        "yt2avsr.cloud.push",
+        lambda workspace, repo_id, **kwargs: pushed.update(repo_id=repo_id) or "ok",
+    )
+    monkeypatch.setattr(cli_mod, "append_processed_sources", lambda *a, **k: 0)
+
+    cli_mod.push_data()
+
+    assert pushed["repo_id"] == EXPECTED_HF_REPO
+
+
+def test_sync_processed_uses_default_yaml_repo(tmp_path, monkeypatch) -> None:
+    import yt2avsr.cli as cli_mod
+
+    monkeypatch.chdir(tmp_path)
+    synced: dict = {}
+    monkeypatch.setattr(
+        cli_mod,
+        "sync_processed_from_hf",
+        lambda *a, **k: synced.update(k) or [],
+    )
+
+    cli_mod.sync_processed()
+
+    assert synced["repo_id"] == EXPECTED_HF_REPO
+
+
+# --- Runtime log/preflight runs once per workspace, incl. shard flow ---
+
+def test_runtime_announced_once_across_pipelines(tmp_path, monkeypatch, capsys) -> None:
+    cfg = _local_cfg(tmp_path)
+    preflights: list = []
+    monkeypatch.setattr(
+        Pipeline, "_preflight_local", lambda self: preflights.append(1)
+    )
+
+    p1 = Pipeline(cfg)
+    p2 = Pipeline(cfg, profile="voiceover")
+    p1._announce_runtime_once()
+    p2._announce_runtime_once()
+
+    out = capsys.readouterr().out
+    assert out.count("[local] detector=mediapipe") == 1
+    assert len(preflights) == 1
+
+
+def test_preflight_fails_when_only_one_binary_present(tmp_path, monkeypatch) -> None:
+    import pytest
+
+    cfg = _local_cfg(tmp_path)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/ffprobe" if name == "ffprobe" else None
+    )
+    with pytest.raises(RuntimeError, match="ffmpeg"):
+        Pipeline(cfg)._preflight_local()
+
+
+# --- Whisper device/compute hardening ---
+
+def test_resolve_device_cuda_without_cuda_falls_back(monkeypatch) -> None:
+    import yt2avsr.transcribe as tr_mod
+
+    monkeypatch.setattr(tr_mod, "_cuda_available", lambda: False)
+    assert tr_mod.resolve_device("cuda") == ("cpu", "int8")
+    assert tr_mod.resolve_device("auto") == ("cpu", "int8")
+
+    monkeypatch.setattr(tr_mod, "_cuda_available", lambda: True)
+    assert tr_mod.resolve_device("cuda") == ("cuda", "float16")
+    assert tr_mod.resolve_device("auto") == ("cuda", "float16")
+
+
+def test_resolve_compute_guards_cpu(capsys) -> None:
+    from yt2avsr.transcribe import resolve_compute
+
+    assert resolve_compute("cpu", "auto") == "int8"
+    assert resolve_compute("cpu", "int8") == "int8"
+    assert resolve_compute("cpu", "float32") == "float32"
+    assert resolve_compute("cuda", "auto") == "float16"
+    assert resolve_compute("cuda", "float16") == "float16"
+    # GPU-only compute on CPU falls back with a warning.
+    assert resolve_compute("cpu", "float16") == "int8"
+    assert "int8" in capsys.readouterr().out

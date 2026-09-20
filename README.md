@@ -46,6 +46,7 @@ RetinaFace ve 1080p kesimleri Modal bulut GPU üzerinde çalışır. Üretilen k
 ```bash
 ytavsr modal --shard 0    # (Shard numaranızı yazın: 0, 1 veya 2)
 ```
+*(Modal container kendi bağımlılıklarını (ffmpeg, torch, RetinaFace/ibug) kendisi kurar; Modal kullanmak için local'de `setup-retinaface` yapmanıza **gerek yok**.)*
 
 #### Yöntem B: Kendi Bilgisayarında (Lokal CPU/GPU) İşleme
 Modal kullanmadan kendi bilgisayarınızda işlemek isterseniz. Lokal akış varsayılan olarak **MediaPipe** detector kullanır (Mac CPU'da ek kurulum gerekmez, `--config` vermenize gerek yok):
