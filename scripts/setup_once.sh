@@ -15,7 +15,8 @@ fi
 
 ".venv/bin/python" -m pip install -e .
 ".venv/bin/yt2avsr" setup-external --config configs/default.yaml
-".venv/bin/yt2avsr" setup-retinaface --config configs/default.yaml
 ".venv/bin/yt2avsr" setup-whisper --config configs/default.yaml
 
 echo "Hazir. Bundan sonra calistirmak icin: ytavsr"
+echo "Not: RetinaFace (GPU/Modal akisi) bu kuruluma dahil degildir."
+echo "Gerekirse ayrica calistir: ytavsr setup-retinaface --config configs/retina_1080p.yaml"

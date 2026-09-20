@@ -218,8 +218,64 @@ class Pipeline:
         return results
 
     def process_local(self, path: Path):
-        item = register_local(path, self.workspace/"raw")
-        self._process_item(item); rebuild(self.workspace); return item
+        self._log_local_runtime()
+        self._preflight_local()
+        p = Path(path)
+        if p.is_dir():
+            from .downloader import VIDEO_EXTENSIONS
+            videos = sorted(
+                v for v in p.iterdir()
+                if v.is_file() and v.suffix.lower() in VIDEO_EXTENSIONS
+            )
+            if not videos:
+                raise ValueError(
+                    f"No supported video files found in directory: {p} "
+                    f"(expected one of {sorted(VIDEO_EXTENSIONS)})"
+                )
+            print(f"[local] Found {len(videos)} video(s) in {p}", flush=True)
+            items = [self._process_single_local(video) for video in videos]
+            rebuild(self.workspace)
+            return items
+        item = self._process_single_local(p)
+        rebuild(self.workspace)
+        return item
+
+    def _process_single_local(self, path: Path):
+        item = register_local(path, self.workspace / "raw")
+        self._process_item(item)
+        return item
+
+    def _log_local_runtime(self) -> None:
+        from .auto_avsr_crop import _device
+        from .transcribe import resolve_device
+        whisper_device, default_compute = resolve_device(self.cfg.transcription.device)
+        compute = (
+            default_compute
+            if self.cfg.transcription.compute_type == "auto"
+            else self.cfg.transcription.compute_type
+        )
+        print(
+            f"[local] detector={self.cfg.auto_avsr.detector} "
+            f"auto_avsr_device={_device(self.cfg.auto_avsr.device)} "
+            f"whisper_device={whisper_device} whisper_compute={compute} "
+            f"whisper_model={self.cfg.transcription.model}",
+            flush=True,
+        )
+
+    def _preflight_local(self) -> None:
+        import shutil
+        if shutil.which("ffmpeg") is None and shutil.which("ffprobe") is None:
+            raise RuntimeError(
+                "ffmpeg bulunamadı. Kur: macOS -> 'brew install ffmpeg' | "
+                "Ubuntu -> 'sudo apt install -y ffmpeg' | "
+                "Windows -> 'winget install Gyan.FFmpeg'."
+            )
+        repo = self.cfg.auto_avsr.repo_dir
+        if not (repo / "preparation").exists():
+            raise RuntimeError(
+                f"Official Auto-AVSR repository not found at {repo.resolve()}. "
+                "Run: ytavsr setup-external --config configs/default.yaml"
+            )
 
     def _process_item(self, item):
         item_start = time.perf_counter()

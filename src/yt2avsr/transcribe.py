@@ -38,8 +38,18 @@ def _ensure_cuda_libs():
 
 
 def resolve_device(device: str) -> tuple[str, str]:
-    if device != "auto":
-        return device, "float16" if device == "cuda" else "int8"
+    # faster-whisper has no MPS backend, so never force MPS: Mac falls back
+    # to CPU/int8 which is explicit and supported.
+    normalized = (device or "auto").strip().lower()
+    if normalized == "mps":
+        print(
+            "[whisper] device='mps' is not supported by faster-whisper; "
+            "falling back to device='cpu' compute='int8'.",
+            flush=True,
+        )
+        return "cpu", "int8"
+    if normalized != "auto":
+        return normalized, "float16" if normalized == "cuda" else "int8"
     try:
         import torch
         if torch.cuda.is_available():
@@ -108,7 +118,14 @@ def transcribe(video: Path, words_output: Path, language: str,
     device, default_compute = resolve_device(cfg.device)
     compute_type = default_compute if cfg.compute_type == "auto" else cfg.compute_type
     num_workers = getattr(cfg, "num_workers", 1)
-    model = _load_model(cfg.model, device, compute_type, num_workers=num_workers)
+    try:
+        model = _load_model(cfg.model, device, compute_type, num_workers=num_workers)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Whisper model '{cfg.model}' yüklenemedi ({exc}). "
+            "İnternet bağlantını kontrol edip önceden indirmeyi dene: "
+            "ytavsr setup-whisper --config configs/default.yaml"
+        ) from exc
     print(f"[whisper] transcribing {video}", flush=True)
     segments, info = model.transcribe(
         str(video), language=language, beam_size=cfg.beam_size,

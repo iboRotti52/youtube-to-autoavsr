@@ -55,7 +55,7 @@ def playlist(
     Pipeline(cfg, force=force, profile=profile, shard=shard_tuple).process_url(url, playlist=True)
 
 @app.command("process-local")
-def local(path:Annotated[Path,typer.Argument()],config:Annotated[Path|None,typer.Option("--config","-c")]=None,
+def local(path:Annotated[Path,typer.Argument(help="Video dosyası veya video klasörü (klasördeki .mp4/.mkv/.webm/.mov/.m4v dosyalarının hepsi işlenir)")],config:Annotated[Path|None,typer.Option("--config","-c")]=None,
           force:Annotated[bool,typer.Option()]=False,
           profile: Annotated[str, typer.Option("--profile", help="no_voiceover or voiceover")] = "no_voiceover",
           workers: Annotated[int | None, typer.Option("--workers", "-w", help="Number of worker threads (default: auto based on CPU cores)")] = None):

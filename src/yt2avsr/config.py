@@ -86,7 +86,9 @@ class TalkNetConfig(BaseModel):
 
 class AutoAVSRConfig(BaseModel):
     repo_dir: Path = Path("external/auto_avsr")
-    detector: str = "retinaface"
+    # Local-first default: MediaPipe works on Mac CPU without torch/ibug.
+    # GPU/Modal flows pass an explicit config (retina_1080p.yaml) to override.
+    detector: str = "mediapipe"
     device: str = "auto"
     output_size: int = 96
     strict: bool = True

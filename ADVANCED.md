@@ -68,15 +68,23 @@ ytavsr modal --shard 0 --force
 
 ## 💻 Yerel (Local) Çalıştırma Seçenekleri
 
-Kendi bilgisayarınızda (GPU veya Mac CPU) çalıştırırken kullanabileceğiniz komutlar:
+Kendi bilgisayarınızda (GPU veya Mac CPU) çalıştırırken kullanabileceğiniz komutlar.
+`--config` vermezseniz lokal komutlar `configs/default.yaml` davranışını kullanır (detector: **MediaPipe**):
 
 ```bash
 # Belirli bir yerel video dosyasını veya klasörünü işlemek:
 ytavsr process-local /yol/video.mp4
 ytavsr process-local /yol/videolar_klasoru/
+# (Klasör verilirse içindeki .mp4/.mkv/.webm/.mov/.m4v dosyalarının hepsi
+# alfabetik sırayla işlenir; başka dosyalar atlanır. Boş/uygunsuz klasörde
+# anlaşılır bir hata verilir.)
 
 # Farklı bir kaynak dosyasını yerelde işlemek:
 ytavsr process-sources sources_voiceover.txt --profile voiceover
+
+# RetinaFace ile çalıştırmak (güçlü GPU; torch + ibug gerekir):
+ytavsr setup-retinaface --config configs/retina_1080p.yaml  # bir kez
+ytavsr process-local /yol/video.mp4 --config configs/retina_1080p.yaml
 
 # Özel yapılandırma dosyası (YAML) ile çalıştırmak:
 ytavsr --config configs/custom.yaml --shard 0
@@ -84,6 +92,12 @@ ytavsr --config configs/custom.yaml --shard 0
 # Tamamlanan aşamaları zorla baştan çalıştırmak:
 ytavsr --force
 ```
+
+**Lokal varsayılanlar (Mac):**
+- Detector: `mediapipe` (RetinaFace kurulumu gerekmez).
+- Whisper (`faster-whisper` MPS desteklemez): `auto` → CUDA varsa `cuda/float16`, yoksa `cpu/int8`. Açıkça `mps` yazılırsa uyarıyla `cpu/int8`'e düşülür.
+- İlk çalıştırmada kullanılan `detector`, `auto_avsr_device`, `whisper_device/compute/model` logda tek satır olarak görünür.
+- Eksik bağımlılıklar anlaşılır hata verir: `ffmpeg` yoksa kurulum komutuyla, Auto-AVSR yoksa `setup-external` komutuyla, Whisper modeli inemezse `setup-whisper` komutuyla yönlendirilir.
 
 ---
 
