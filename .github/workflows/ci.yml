@@ -41,7 +41,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          uv sync --python 3.11
+          uv sync --python 3.11 --all-extras
 
       - name: Run Pytest Suite
         run: |
