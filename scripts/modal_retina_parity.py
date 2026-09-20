@@ -83,7 +83,7 @@ if modal is not None:
         )
         .env(
             {
-                "PYTHONPATH": "/root/youtube-to-autoavsr/external/auto_avsr",
+                "PYTHONPATH": "/root/current/src:/root/youtube-to-autoavsr/external/auto_avsr",
                 "LD_LIBRARY_PATH": "/usr/local/lib/python3.11/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib",
             }
         )
