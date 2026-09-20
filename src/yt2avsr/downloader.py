@@ -173,12 +173,15 @@ def download(
     items = [entry for entry in entries if isinstance(entry, dict)] if entries is not None else [info]
     results: list[dict] = []
 
-    for item_idx, item in enumerate(items):
+    for item in items:
         if not isinstance(item, dict):
             continue
         if playlist and shard and shard[1] > 1:
-            if (item_idx % shard[1]) != shard[0]:
-                continue
+            p_idx = item.get("playlist_index")
+            if p_idx is not None:
+                zero_idx = int(p_idx) - 1
+                if (zero_idx % shard[1]) != shard[0]:
+                    continue
 
         raw_vid = str(item.get("id", ""))
         video_id = safe_id(raw_vid)

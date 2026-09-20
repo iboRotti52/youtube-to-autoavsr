@@ -120,6 +120,10 @@ if modal is not None:
         # Worker isolation: isolate processed_sources to this worker workspace and disable auto sync in worker
         cfg.sources.processed_file = video_workspace / "processed_sources.txt"
         cfg.sources.auto_sync_hf = False
+        passed_processed = job.get("processed_ids")
+        if passed_processed:
+            from yt2avsr.sources import append_processed_sources
+            append_processed_sources(passed_processed, cfg.sources.processed_file)
         cfg.auto_avsr.repo_dir = Path("/root/youtube-to-autoavsr/external/auto_avsr")
         cfg.auto_avsr.detector = "retinaface"
         cfg.normalization.max_height = 1080
@@ -201,6 +205,7 @@ if modal is not None:
                     "video_id": video_id,
                     "profile": profile,
                     "workspace": str(video_workspace),
+                    "is_playlist": is_playlist,
                     "error": f"volume.commit() failed: {e}",
                     "accepted_clips": 0,
                     "review_clips": 0,
@@ -214,6 +219,7 @@ if modal is not None:
                 "profile": profile,
                 "workspace": str(video_workspace),
                 "item_ids": item_ids,
+                "is_playlist": is_playlist,
                 "accepted_clips": accepted_count,
                 "review_clips": review_count,
                 "rejected_clips": rejected_count,
@@ -231,6 +237,7 @@ if modal is not None:
                 "video_id": video_id,
                 "profile": profile,
                 "workspace": str(video_workspace),
+                "is_playlist": is_playlist,
                 "error": str(exc),
                 "accepted_clips": 0,
                 "review_clips": 0,
@@ -282,6 +289,7 @@ if modal is not None:
             deduplicate_source_lines,
             partition_sources,
             is_playlist_source,
+            is_source_processed,
         )
 
         cfg = load_config(Path(config_path))
@@ -314,30 +322,30 @@ if modal is not None:
             owner_info = f" ({owner})" if owner else ""
             print(f"[modal-coord] Active sharding: shard {shard_tuple[0]}/{shard_tuple[1]}{owner_info}", flush=True)
 
-        # 2. Filter & Deduplicate
-        def is_unprocessed(line: str) -> bool:
-            k = get_source_key(line) or line
-            return bool(k and k not in processed_ids)
-
+        # 2. Deduplicate full source list across voiceover & no_voiceover
         dedup_vo, _ = deduplicate_source_lines(voiceover_lines)
-        filt_vo = [l for l in dedup_vo if is_unprocessed(l)]
-
         seen_vo_keys = {get_source_key(l) for l in dedup_vo if get_source_key(l)}
         dedup_nvo, _ = deduplicate_source_lines(no_voiceover_lines, seen_keys=seen_vo_keys)
-        filt_nvo = [l for l in dedup_nvo if is_unprocessed(l)]
 
         sources_pairs: list[tuple[str, str]] = []
-        for line in filt_nvo:
+        for line in dedup_nvo:
             sources_pairs.append(("no_voiceover", line))
-        for line in filt_vo:
+        for line in dedup_vo:
             sources_pairs.append(("voiceover", line))
 
-        # Shard partitioning if specified
+        # Shard partitioning on FULL deduplicated source list (guarantees stable ownership over time)
         if shard_tuple:
+            orig_total = len(sources_pairs)
             sources_pairs = partition_sources(sources_pairs, shard_tuple)
+            print(
+                f"[modal-coord] Shard {shard_tuple[0]}/{shard_tuple[1]} assigned {len(sources_pairs)} of {orig_total} total sources.",
+                flush=True,
+            )
 
+        # Filter already-processed sources within assigned shard
+        sources_pairs = [pair for pair in sources_pairs if not is_source_processed(pair[1], processed_ids)]
         total_pending = len(sources_pairs)
-        print(f"[modal-coord] Pending unique videos to process: {total_pending}", flush=True)
+        print(f"[modal-coord] Pending unique videos to process in this shard: {total_pending}", flush=True)
 
         if total_pending == 0:
             return {
@@ -388,6 +396,7 @@ if modal is not None:
                 "is_playlist": is_playlist,
                 "shard": shard_tuple,
                 "cookies_content": cookies_content,
+                "processed_ids": list(processed_ids),
             })
 
         print(
@@ -427,22 +436,72 @@ if modal is not None:
         aggregated_clips = aggregated_workspace / "clips"
         aggregated_clips.mkdir(parents=True, exist_ok=True)
 
+        seen_items: dict[str, str] = {}
         for res in successful_results:
+            src_url = res.get("url", "unknown")
             worker_clips = Path(res["workspace"]) / "clips"
             if worker_clips.exists():
                 for item_dir in worker_clips.iterdir():
                     if item_dir.is_dir():
-                        dst_clips = aggregated_clips / item_dir.name
-                        if dst_clips.exists():
-                            print(
-                                f"[modal-coord] Warning: duplicate item_id '{item_dir.name}' detected across workers! Skipping duplicate copy.",
-                                flush=True,
-                            )
-                            continue
+                        item_id = item_dir.name
+                        dst_clips = aggregated_clips / item_id
+
+                        # Determine canonical source for this item from metadata or worker URL
+                        first_meta = next(item_dir.glob("*/metadata.json"), None)
+                        item_source = src_url
+                        if first_meta and first_meta.exists():
+                            try:
+                                m_data = json.loads(first_meta.read_text(encoding="utf-8"))
+                                item_source = m_data.get("source_url") or src_url
+                            except Exception:
+                                pass
+
+                        if item_id in seen_items:
+                            existing_source = seen_items[item_id]
+                            k_exist = get_source_key(existing_source) or existing_source
+                            k_new = get_source_key(item_source) or item_source
+                            if k_exist == k_new:
+                                print(
+                                    f"[modal-coord] Safe deduplication: duplicate item_id '{item_id}' from same source '{item_source}' already aggregated. Skipping redundant copy.",
+                                    flush=True,
+                                )
+                                continue
+                            else:
+                                err = (
+                                    f"Fatal: duplicate item_id collision detected across workers! "
+                                    f"Item ID '{item_id}' belongs to two different sources: "
+                                    f"'{existing_source}' and '{item_source}'. Aborting run to prevent corrupt dataset."
+                                )
+                                print(f"[modal-coord] {err}", flush=True)
+                                raise RuntimeError(err)
+
+                        seen_items[item_id] = item_source
                         shutil.copytree(item_dir, dst_clips)
 
         # Manifests and records rebuilt directly from aggregated disk state
         aggregated_records = rebuild(aggregated_workspace)
+
+        # Write append-only completion ledger: data/<contributor>/completions/<run_id>.jsonl
+        completions_dir = aggregated_workspace / "completions"
+        completions_dir.mkdir(parents=True, exist_ok=True)
+        ledger_path = completions_dir / f"{run_id}.jsonl"
+        with ledger_path.open("w", encoding="utf-8") as f_ledger:
+            for r in successful_results:
+                ledger_entry = {
+                    "run_id": run_id,
+                    "url": r.get("url"),
+                    "video_id": r.get("video_id"),
+                    "item_ids": r.get("item_ids", []),
+                    "contributor": contributor,
+                    "profile": r.get("profile"),
+                    "is_playlist": bool(r.get("is_playlist", False)),
+                    "accepted_clips": r.get("accepted_clips", 0),
+                    "review_clips": r.get("review_clips", 0),
+                    "rejected_clips": r.get("rejected_clips", 0),
+                    "status": "completed",
+                    "timestamp": time.time(),
+                }
+                f_ledger.write(json.dumps(ledger_entry, ensure_ascii=False) + "\n")
 
         total_accepted = sum(1 for r in aggregated_records if r.get("quality_status") == "accepted")
         total_review = sum(1 for r in aggregated_records if r.get("quality_status") == "review")
@@ -470,10 +529,13 @@ if modal is not None:
                 print(f"[modal-coord] Upload complete: {push_result}", flush=True)
 
                 # On successful HF push, record all evaluated videos (including 100% rejected or zero-clip ones) in processed_sources.txt
+                # Do NOT append playlist URL itself; track completion via real item IDs
                 newly_processed = list(aggregated_records)
                 for r in successful_results:
-                    if r.get("url"):
+                    if r.get("url") and not r.get("is_playlist"):
                         newly_processed.append(r["url"])
+                    for i_id in r.get("item_ids", []):
+                        newly_processed.append(f"video:{i_id}")
                 if newly_processed:
                     added = append_processed_sources(newly_processed, cfg.sources.processed_file)
                     print(f"[modal-coord] Recorded {added} newly processed video(s) in {cfg.sources.processed_file}.", flush=True)

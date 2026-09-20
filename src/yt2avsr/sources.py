@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import re
 from pathlib import Path
 from typing import Any, Iterable
@@ -483,7 +484,6 @@ def sync_processed_from_hf(
                             "channel": row.get("channel"),
                         }
             elif manifest_path.endswith(".jsonl"):
-                import json
                 for line in manifest_content.splitlines():
                     if not line.strip():
                         continue
@@ -501,6 +501,47 @@ def sync_processed_from_hf(
                         }
         except Exception as exc:
             print(f"[warning] Could not read manifest '{manifest_path}' from HF: {exc}")
+
+    # Scan append-only completion ledgers: data/<contributor>/completions/<run_uuid>.jsonl
+    completion_files = [
+        f for f in repo_files
+        if "/completions/" in f and f.endswith(".jsonl")
+    ]
+    for comp_path in completion_files:
+        try:
+            local_comp = hf_hub_download(
+                repo_id=repo_id,
+                filename=comp_path,
+                repo_type="dataset",
+                token=token,
+            )
+            comp_content = Path(local_comp).read_text(encoding="utf-8", errors="replace")
+            for line in comp_content.splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                    item_id = row.get("item_id") or row.get("video_id")
+                    if item_id and item_id not in discovered_records:
+                        discovered_records[item_id] = {
+                            "id": item_id,
+                            "item_id": item_id,
+                            "source_url": row.get("source_url") or row.get("url") or f"https://www.youtube.com/watch?v={item_id}",
+                            "title": row.get("title"),
+                            "channel": row.get("channel"),
+                        }
+                    for sub_id in row.get("item_ids", []):
+                        if sub_id and sub_id not in discovered_records:
+                            discovered_records[sub_id] = {
+                                "id": sub_id,
+                                "item_id": sub_id,
+                                "source_url": f"https://www.youtube.com/watch?v={sub_id}",
+                                "title": None,
+                            }
+                except Exception:
+                    pass
+        except Exception as exc:
+            print(f"[warning] Could not read completion ledger '{comp_path}' from HF: {exc}")
 
     # Fallback / augment: scan clips paths if manifests weren't found or complete
     # e.g. data/<contributor>/clips/<item_id>/...

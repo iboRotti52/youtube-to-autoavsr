@@ -389,5 +389,93 @@ def test_resolve_source_inputs_with_quotes_and_files():
         ]
 
 
+def test_sync_processed_from_hf_with_completion_ledger(tmp_path):
+    """Verify that sync_processed_from_hf extracts 100% rejected videos from completion ledgers."""
+    import json
+    from yt2avsr.sources import sync_processed_from_hf, load_processed_ids, is_source_processed
+
+    ledger_content = "\n".join([
+        json.dumps({
+            "run_id": "run_12345",
+            "item_id": "rej00000001",
+            "source_url": "https://www.youtube.com/watch?v=rej00000001",
+            "status": "completed",
+            "accepted_clips": 0,
+            "review_clips": 0,
+            "rejected_clips": 10,
+        }),
+        json.dumps({
+            "run_id": "run_12345",
+            "item_id": "acc00000002",
+            "source_url": "https://www.youtube.com/watch?v=acc00000002",
+            "status": "completed",
+            "accepted_clips": 5,
+            "review_clips": 1,
+            "rejected_clips": 0,
+        }),
+    ])
+
+    fake_ledger_file = tmp_path / "run_12345.jsonl"
+    fake_ledger_file.write_text(ledger_content, encoding="utf-8")
+
+    with patch("huggingface_hub.HfApi") as mock_api:
+        mock_api.return_value.list_repo_files.return_value = [
+            "data/contributor_a/completions/run_12345.jsonl",
+        ]
+        with patch("huggingface_hub.hf_hub_download", return_value=str(fake_ledger_file)):
+            proc_file = tmp_path / "processed_sources.txt"
+            records = sync_processed_from_hf("repo/id", path=proc_file)
+
+            assert len(records) == 2
+            item_ids = {r["id"] for r in records}
+            assert "rej00000001" in item_ids
+            assert "acc00000002" in item_ids
+
+            proc_ids = load_processed_ids(proc_file)
+            assert is_source_processed("rej00000001", proc_ids)
+            assert is_source_processed("acc00000002", proc_ids)
+            assert is_source_processed("https://www.youtube.com/watch?v=rej00000001", proc_ids)
+
+
+def test_downloader_playlist_sharding_no_double_modulo(tmp_path):
+    """Verify that downloader does not apply modulo twice on items with playlist_index."""
+    from yt2avsr.config import DownloadConfig
+    from yt2avsr.downloader import download
+
+    cfg = DownloadConfig()
+    cfg.format = "best"
+
+    # Simulate yt-dlp returning 2 items that matched shard 0 of (0, 2) with playlist_index=1 and 3
+    fake_info = {
+        "_type": "playlist",
+        "entries": [
+            {"id": "vid_item_1", "title": "Item 1", "playlist_index": 1},
+            {"id": "vid_item_3", "title": "Item 3", "playlist_index": 3},
+        ]
+    }
+
+    # Setup directories and fake video files so _find_downloaded_video succeeds
+    for vid in ["vid_item_1", "vid_item_3"]:
+        d = tmp_path / vid
+        d.mkdir(parents=True)
+        (d / "video.mp4").write_text("content")
+
+    with patch("yt2avsr.downloader._extract_with_fallback", return_value=fake_info):
+        res = download(
+            "https://youtube.com/playlist?list=PL123",
+            tmp_path,
+            cfg,
+            playlist=True,
+            shard=(0, 2),
+        )
+
+        # BOTH items must be kept! (Previously, enumerate index 1 % 2 != 0 dropped the second item)
+        res_ids = [r["id"] for r in res]
+        assert "vid_item_1" in res_ids
+        assert "vid_item_3" in res_ids
+        assert len(res) == 2
+
+
+
 
 

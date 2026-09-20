@@ -158,8 +158,8 @@ def push(
     else:
         commit_msg = f"Add {len(clip_dirs)} clips from {contributor} ({','.join(statuses)})"
 
-    # Precise single-commit selection: only chosen clip folders + all manifests.
-    allow_patterns = ["manifests/**"]
+    # Precise single-commit selection: only chosen clip folders + all manifests + completion ledgers.
+    allow_patterns = ["manifests/**", "completions/**"]
     for d in clip_dirs:
         rel = d.relative_to(workspace).as_posix()  # clips/<item>/<segment>
         allow_patterns.append(f"{rel}/**")

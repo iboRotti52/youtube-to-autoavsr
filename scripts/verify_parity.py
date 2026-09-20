@@ -83,6 +83,7 @@ def verify_parity(base_path: Path, perf_path: Path, video_id: str = "") -> bool:
 
     status_mismatches = []
     text_mismatches = []
+    orig_text_mismatches = []
     timestamp_mismatches = []
 
     base_counts = {"accepted": 0, "review": 0, "rejected": 0}
@@ -105,9 +106,14 @@ def verify_parity(base_path: Path, perf_path: Path, video_id: str = "") -> bool:
         if b_txt != p_txt:
             text_mismatches.append((sid, b_txt, p_txt))
 
+        b_orig = b.get("original_text", "").strip()
+        p_orig = p.get("original_text", "").strip()
+        if b_orig != p_orig:
+            orig_text_mismatches.append((sid, b_orig, p_orig))
+
         b_start, b_end = float(b.get("start", 0)), float(b.get("end", 0))
         p_start, p_end = float(p.get("start", 0)), float(p.get("end", 0))
-        if abs(b_start - p_start) > 0.01 or abs(b_end - p_end) > 0.01:
+        if abs(b_start - p_start) > 0.001 or abs(b_end - p_end) > 0.001:
             timestamp_mismatches.append((sid, (b_start, b_end), (p_start, p_end)))
 
     print(f"\n📊 Summary Stats:")
@@ -127,8 +133,14 @@ def verify_parity(base_path: Path, perf_path: Path, video_id: str = "") -> bool:
             print(f"    - Segment {sid}:\n        baseline: {b_txt}\n        perf:     {p_txt}", file=sys.stderr)
         passed = False
 
+    if orig_text_mismatches:
+        print(f"\n❌ Original Text Mismatches ({len(orig_text_mismatches)}):", file=sys.stderr)
+        for sid, b_orig, p_orig in orig_text_mismatches[:5]:
+            print(f"    - Segment {sid}:\n        baseline: {b_orig}\n        perf:     {p_orig}", file=sys.stderr)
+        passed = False
+
     if timestamp_mismatches:
-        print(f"\n❌ Timestamp Mismatches ({len(timestamp_mismatches)}):", file=sys.stderr)
+        print(f"\n❌ Timestamp Mismatches (>1ms) ({len(timestamp_mismatches)}):", file=sys.stderr)
         for sid, b_ts, p_ts in timestamp_mismatches[:5]:
             print(f"    - Segment {sid}: baseline={b_ts} vs perf={p_ts}", file=sys.stderr)
         passed = False
