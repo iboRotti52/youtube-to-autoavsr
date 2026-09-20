@@ -14,7 +14,27 @@ from .config import TranscriptionConfig
 from .utils import normalize_text, write_json
 
 
+import os
 _MODEL_LOCK = threading.Lock()
+
+
+def _ensure_cuda_libs():
+    """Ensure CUDA runtime libraries (cublas, cudnn) from pip packages are preloaded."""
+    try:
+        import ctypes
+        import site
+        for sp in site.getsitepackages():
+            for sub in ("cublas", "cudnn"):
+                lib_dir = os.path.join(sp, "nvidia", sub, "lib")
+                if os.path.isdir(lib_dir):
+                    for f in sorted(os.listdir(lib_dir)):
+                        if ".so" in f:
+                            try:
+                                ctypes.CDLL(os.path.join(lib_dir, f), mode=ctypes.RTLD_GLOBAL)
+                            except Exception:
+                                pass
+    except Exception:
+        pass
 
 
 def resolve_device(device: str) -> tuple[str, str]:
@@ -33,6 +53,8 @@ def resolve_device(device: str) -> tuple[str, str]:
 def _load_model_cached(
     model_name: str, device: str, compute_type: str, num_workers: int
 ) -> WhisperModel:
+    if device == "cuda":
+        _ensure_cuda_libs()
     print(
         f"[whisper] loading model={model_name} device={device} compute={compute_type} num_workers={num_workers}",
         flush=True,

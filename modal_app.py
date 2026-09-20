@@ -45,6 +45,8 @@ if modal is not None:
             "torch",
             "torchvision",
             "torchaudio",
+            "nvidia-cublas-cu12",
+            "nvidia-cudnn-cu12",
             "typer>=0.12,<1",
             "pydantic>=2.7,<3",
             "PyYAML>=6,<7",
@@ -67,10 +69,12 @@ if modal is not None:
             "git clone --depth 1 https://github.com/mpc001/auto_avsr.git /root/youtube-to-autoavsr/external/auto_avsr",
             "git clone https://github.com/hhj1897/face_detection.git /root/youtube-to-autoavsr/external/face_detection && cd /root/youtube-to-autoavsr/external/face_detection && git lfs pull && pip install -e .",
             "git clone https://github.com/hhj1897/face_alignment.git /root/youtube-to-autoavsr/external/face_alignment && cd /root/youtube-to-autoavsr/external/face_alignment && git lfs pull && pip install -e .",
+            "python3 -c 'import os, site; pths = [os.path.join(s, \"nvidia\", sub, \"lib\") for s in site.getsitepackages() for sub in (\"cublas\", \"cudnn\") if os.path.exists(os.path.join(s, \"nvidia\", sub, \"lib\"))]; open(\"/etc/ld.so.conf.d/nvidia.conf\", \"w\").write(\"\\n\".join(pths) + \"\\n\"); os.system(\"ldconfig\")'",
             "python3 -c 'from faster_whisper import WhisperModel; WhisperModel(\"large-v3-turbo\", device=\"cpu\", compute_type=\"int8\")'",
         )
         .env({
             "PYTHONPATH": "/root/youtube-to-autoavsr/src:/root/youtube-to-autoavsr/external/auto_avsr",
+            "LD_LIBRARY_PATH": "/usr/local/lib/python3.11/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib",
         })
         .add_local_dir(str(REPO_ROOT / "src"), remote_path="/root/youtube-to-autoavsr/src")
         .add_local_dir(str(REPO_ROOT / "configs"), remote_path="/root/youtube-to-autoavsr/configs")
