@@ -84,7 +84,6 @@ if modal is not None:
         gpu="T4",
         cpu=4.0,
         timeout=60 * 60 * 2,  # up to 2 hours per video
-        ephemeral_disk=50 * 1024,  # 50 GB
         volumes={"/workspace": volume},
     )
     def process_single_video_modal(job: dict[str, Any]) -> dict[str, Any]:
