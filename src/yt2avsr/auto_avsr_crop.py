@@ -139,9 +139,11 @@ def _read_cached_landmarks(source: Path, cfg: AutoAVSRConfig) -> tuple[list, flo
         detector, _ = _get_components(cfg)
         cap = cv2.VideoCapture(str(source))
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
         landmarks = []
         batch = []
         batch_size = 250
+        print(f"[landmarks] Pre-caching landmarks for {source.name} ({total_frames} frames, detector={cfg.detector})...", flush=True)
 
         try:
             while True:
@@ -152,9 +154,13 @@ def _read_cached_landmarks(source: Path, cfg: AutoAVSRConfig) -> tuple[list, flo
                 if len(batch) >= batch_size:
                     landmarks.extend(_detect_landmarks(detector, np.asarray(batch)))
                     batch.clear()
+                    pct = f"{len(landmarks)/total_frames*100:.1f}%" if total_frames > 0 else ""
+                    print(f"[landmarks] Processed {len(landmarks)}/{total_frames} frames ({pct})...", flush=True)
 
             if batch:
                 landmarks.extend(_detect_landmarks(detector, np.asarray(batch)))
+                pct = f"{len(landmarks)/total_frames*100:.1f}%" if total_frames > 0 else ""
+                print(f"[landmarks] Processed {len(landmarks)}/{total_frames} frames ({pct})...", flush=True)
         finally:
             cap.release()
 
@@ -183,13 +189,13 @@ def crop_with_official_auto_avsr(source: Path, output: Path,
     if landmark_source is not None and start_seconds is not None:
         cached_landmarks, landmark_fps = _read_cached_landmarks(landmark_source, cfg)
         if duration_seconds is not None:
-            source_frame_count = max(1, int(round(duration_seconds * landmark_fps)))
+            source_frame_count = max(1, int(np.floor(duration_seconds * landmark_fps + 0.5)))
             fps = landmark_fps
         else:
             source_frame_count, fps = _probe_frame_count(source)
         if source_frame_count == 0:
             raise RuntimeError("Source clip has no frames")
-        start_frame = max(0, int(round(start_seconds * landmark_fps)))
+        start_frame = max(0, int(np.floor(start_seconds * landmark_fps + 0.5)))
         frames, _ = _read_rgb_frame_slice(
             landmark_source, start_frame, source_frame_count
         )

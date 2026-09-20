@@ -16,6 +16,7 @@ from .sources import (
     is_playlist_source,
     is_source_processed,
     load_processed_ids,
+    partition_sources,
     parse_shard,
     sync_processed_from_hf,
 )
@@ -350,9 +351,6 @@ def process_both_sources(
     deduped_vo_lines, dups_vo = deduplicate_source_lines(usable_voiceover)
     skipped_dup_vo = len(dups_vo)
 
-    filtered_voiceover_lines = [l for l in deduped_vo_lines if _is_unprocessed(l)]
-    skipped_processed_vo = len(deduped_vo_lines) - len(filtered_voiceover_lines)
-
     # 2. Track keys seen in voiceover to deduplicate against no_voiceover
     seen_vo_keys = {get_source_key(l) for l in deduped_vo_lines if get_source_key(l)}
 
@@ -377,23 +375,33 @@ def process_both_sources(
         else:
             internal_nvo_keys.add(k)
 
-    filtered_no_voiceover_lines = [l for l in deduped_nvo_lines if _is_unprocessed(l)]
-    skipped_processed_nvo = len(deduped_nvo_lines) - len(filtered_no_voiceover_lines)
-
-    no_voiceover_job_path = (
-        _write_filtered_sources(no_voiceover_path, filtered_no_voiceover_lines)
-        if filtered_no_voiceover_lines
-        else no_voiceover_path
-    )
-    voiceover_job_path = (
-        _write_filtered_sources(voiceover_path, filtered_voiceover_lines)
-        if filtered_voiceover_lines
-        else voiceover_path
-    )
-    jobs = [
-        ("no_voiceover", no_voiceover_job_path),
-        ("voiceover", voiceover_job_path),
+    # Keep the full deduplicated source order across both profiles before sharding.
+    all_sources = [
+        *(("no_voiceover", line) for line in deduped_nvo_lines),
+        *(("voiceover", line) for line in deduped_vo_lines),
     ]
+    assigned_sources = partition_sources(all_sources, shard_tuple)
+    if shard_tuple:
+        typer.echo(
+            f"Shard {shard_tuple[0]}/{shard_tuple[1]} assigned "
+            f"{len(assigned_sources)} of {len(all_sources)} total source(s)."
+        )
+
+    pending_sources = []
+    skipped_processed = {"no_voiceover": 0, "voiceover": 0}
+    for profile, line in assigned_sources:
+        if _is_unprocessed(line):
+            pending_sources.append((profile, line))
+        else:
+            skipped_processed[profile] += 1
+
+    jobs = []
+    for profile, source_path in (
+        ("no_voiceover", no_voiceover_path),
+        ("voiceover", voiceover_path),
+    ):
+        assigned_lines = [line for job_profile, line in pending_sources if job_profile == profile]
+        jobs.append((profile, _write_filtered_sources(source_path, assigned_lines)))
 
     if skipped_dup_vo > 0:
         typer.echo(f"Skipped {skipped_dup_vo} duplicate source(s) within sources_voiceover.txt.")
@@ -407,7 +415,7 @@ def process_both_sources(
             "exist in sources_voiceover.txt."
         )
 
-    total_skipped_processed = skipped_processed_vo + skipped_processed_nvo
+    total_skipped_processed = sum(skipped_processed.values())
     if total_skipped_processed > 0:
         typer.echo(
             f"Skipped {total_skipped_processed} source(s) because they were already processed "
@@ -419,7 +427,10 @@ def process_both_sources(
         if not _has_usable_sources(path):
             typer.echo(f"Skipping {path.name}: no usable links, moving on.")
             continue
-        Pipeline(cfg, force=force, profile=profile, shard=shard_tuple).process_sources_file(path)
+        Pipeline(cfg, force=force, profile=profile, shard=shard_tuple).process_sources_file(
+            path,
+            already_partitioned=True,
+        )
         ran.append(path.name)
 
     if not ran:
@@ -729,4 +740,3 @@ def modal_cmd(
 
 
 if __name__=="__main__": app()
-

@@ -97,7 +97,8 @@ def test_zero_clip_manifest_push(tmp_path):
         assert "0 clips" in res
         mock_api.return_value.upload_folder.assert_called_once()
         kwargs = mock_api.return_value.upload_folder.call_args.kwargs
-        assert kwargs["allow_patterns"] == ["manifests/**"]
+        assert "manifests/**" in kwargs["allow_patterns"]
+        assert "completions/**" in kwargs["allow_patterns"]
         assert "0 usable clips" in kwargs["commit_message"]
 
 
@@ -113,37 +114,138 @@ def test_pipeline_preserves_whisper_num_workers():
     assert p.cfg.transcription.num_workers == 1
 
 
-def test_aggregation_duplicate_detection(tmp_path):
+def test_shard_stability_over_time():
+    """Verify that deduplicate -> partition -> filter preserves stable shard ownership over time."""
+    from yt2avsr.sources import (
+        deduplicate_source_lines,
+        partition_sources,
+        get_source_key,
+        is_source_processed,
+    )
+
+    all_urls = [
+        f"https://www.youtube.com/watch?v=vid000000{i:02d}" for i in range(12)
+    ]
+    voiceover_lines = all_urls[:6]
+    no_voiceover_lines = all_urls[6:]
+
+    def get_pending_for_shard(shard_tuple, processed_set):
+        dedup_vo, _ = deduplicate_source_lines(voiceover_lines)
+        seen_vo_keys = {get_source_key(l) for l in dedup_vo if get_source_key(l)}
+        dedup_nvo, _ = deduplicate_source_lines(no_voiceover_lines, seen_keys=seen_vo_keys)
+
+        sources_pairs = []
+        for line in dedup_nvo:
+            sources_pairs.append(("no_voiceover", line))
+        for line in dedup_vo:
+            sources_pairs.append(("voiceover", line))
+
+        # Partition full list
+        sources_pairs = partition_sources(sources_pairs, shard_tuple)
+
+        # Filter within shard using is_source_processed
+        return [p for p in sources_pairs if not is_source_processed(p[1], processed_set)]
+
+    # Initial assignment for shard (0, 3)
+    p0_initial = get_pending_for_shard((0, 3), set())
+    p1_initial = get_pending_for_shard((1, 3), set())
+    p2_initial = get_pending_for_shard((2, 3), set())
+
+    assert len(p0_initial) == 4
+    assert len(p1_initial) == 4
+    assert len(p2_initial) == 4
+
+    # Now assume 2 videos assigned to shard 0 were processed
+    processed = {p0_initial[0][1], p0_initial[1][1]}
+    p0_after = get_pending_for_shard((0, 3), processed)
+    p1_after = get_pending_for_shard((1, 3), processed)
+    p2_after = get_pending_for_shard((2, 3), processed)
+
+    # Shards 1 and 2 must have EXACTLY the same items as before!
+    assert p1_after == p1_initial
+    assert p2_after == p2_initial
+    # Shard 0 has only the remaining 2 items from its original partition
+    assert len(p0_after) == 2
+    assert all(item in p0_initial for item in p0_after)
+
+
+def test_aggregation_duplicate_same_source_vs_collision(tmp_path):
+    """Verify safe dedupe for same source and fatal RuntimeError for different source collision."""
+    import json
     import shutil
+
     run_root = tmp_path / "run_test"
-    agg_clips = run_root / "aggregated" / "clips"
-    agg_clips.mkdir(parents=True)
 
-    worker_a_clips = tmp_path / "worker_a" / "clips"
-    (worker_a_clips / "video_dup").mkdir(parents=True)
-    (worker_a_clips / "video_dup" / "clip_a.txt").write_text("from worker a")
+    # Setup worker 1 with vid_00000001 from URL A
+    w1_dir = tmp_path / "w1" / "clips" / "vid_00000001" / "seg_01"
+    w1_dir.mkdir(parents=True)
+    (w1_dir / "metadata.json").write_text(json.dumps({
+        "item_id": "vid_00000001",
+        "source_url": "https://youtube.com/watch?v=vid00000001",
+    }))
 
-    worker_b_clips = tmp_path / "worker_b" / "clips"
-    (worker_b_clips / "video_dup").mkdir(parents=True)
-    (worker_b_clips / "video_dup" / "clip_b.txt").write_text("from worker b")
+    # Setup worker 2 with vid_00000001 from URL A (same source)
+    w2_dir = tmp_path / "w2" / "clips" / "vid_00000001" / "seg_01"
+    w2_dir.mkdir(parents=True)
+    (w2_dir / "metadata.json").write_text(json.dumps({
+        "item_id": "vid_00000001",
+        "source_url": "https://youtube.com/watch?v=vid00000001",
+    }))
 
-    copied = []
-    skipped = []
-    for w_clips in [worker_a_clips, worker_b_clips]:
-        for item_dir in w_clips.iterdir():
-            if item_dir.is_dir():
-                dst = agg_clips / item_dir.name
-                if dst.exists():
-                    skipped.append(item_dir.name)
-                    continue
-                shutil.copytree(item_dir, dst)
-                copied.append(item_dir.name)
+    def aggregate(successful_results, target_clips):
+        from yt2avsr.sources import get_source_key
+        seen_items = {}
+        for res in successful_results:
+            src_url = res.get("url", "unknown")
+            worker_clips = Path(res["workspace"]) / "clips"
+            if worker_clips.exists():
+                for item_dir in worker_clips.iterdir():
+                    if item_dir.is_dir():
+                        item_id = item_dir.name
+                        dst_clips = target_clips / item_id
+                        first_meta = next(item_dir.glob("*/metadata.json"), None)
+                        item_source = src_url
+                        if first_meta and first_meta.exists():
+                            m_data = json.loads(first_meta.read_text())
+                            item_source = m_data.get("source_url") or src_url
 
-    assert copied == ["video_dup"]
-    assert skipped == ["video_dup"]
-    # Ensure worker b did not overwrite worker a
-    assert (agg_clips / "video_dup" / "clip_a.txt").exists()
-    assert not (agg_clips / "video_dup" / "clip_b.txt").exists()
+                        if item_id in seen_items:
+                            existing_source = seen_items[item_id]
+                            k_exist = get_source_key(existing_source) or existing_source
+                            k_new = get_source_key(item_source) or item_source
+                            if k_exist == k_new:
+                                continue
+                            else:
+                                raise RuntimeError(f"Duplicate item collision: {item_id}")
+                        seen_items[item_id] = item_source
+                        shutil.copytree(item_dir, dst_clips)
+
+    # 1. Same source: succeeds via safe dedupe
+    agg_clips_1 = run_root / "agg_1" / "clips"
+    agg_clips_1.mkdir(parents=True)
+    res_same = [
+        {"url": "https://youtube.com/watch?v=vid00000001", "workspace": str(tmp_path / "w1")},
+        {"url": "https://youtube.com/watch?v=vid00000001", "workspace": str(tmp_path / "w2")},
+    ]
+    aggregate(res_same, agg_clips_1)
+    assert (agg_clips_1 / "vid_00000001").exists()
+
+    # 2. Collision: different source produces same item_id -> raises RuntimeError
+    agg_clips_2 = run_root / "agg_2" / "clips"
+    agg_clips_2.mkdir(parents=True)
+    w3_dir = tmp_path / "w3" / "clips" / "vid_00000001" / "seg_01"
+    w3_dir.mkdir(parents=True)
+    (w3_dir / "metadata.json").write_text(json.dumps({
+        "item_id": "vid_00000001",
+        "source_url": "https://youtube.com/watch?v=COLLISION_12",
+    }))
+
+    res_collision = [
+        {"url": "https://youtube.com/watch?v=vid00000001", "workspace": str(tmp_path / "w1")},
+        {"url": "https://youtube.com/watch?v=COLLISION_12", "workspace": str(tmp_path / "w3")},
+    ]
+    with pytest.raises(RuntimeError, match="Duplicate item collision"):
+        aggregate(res_collision, agg_clips_2)
 
 
 def test_modal_main_signature_and_cleanup_volume():
@@ -164,5 +266,86 @@ def test_modal_main_signature_and_cleanup_volume():
 
     code = app_path.read_text(encoding="utf-8")
     assert "shutil.rmtree(run_root" in code
+
+
+def test_worker_zero_clip_item_completion(tmp_path):
+    """Verify that worker derives item_ids from Pipeline return items even with 0 clips, and coordinator records it."""
+    from yt2avsr.sources import load_processed_ids, is_source_processed, append_processed_sources
+
+    # Mock return from Pipeline: video was processed, but generated 0 clips
+    pipeline_items = [{"id": "zero_clip_item_999", "metadata": {"id": "zero_clip_item_999"}}]
+    # Worker derivation logic:
+    item_ids = [str(it["id"]) for it in pipeline_items if isinstance(it, dict) and it.get("id")]
+    assert item_ids == ["zero_clip_item_999"]
+
+    # Coordinator processing: write completion ledger and append to processed_sources
+    proc_file = tmp_path / "processed_sources.txt"
+    successful_results = [{
+        "url": "https://youtube.com/watch?v=zero_clip_item_999",
+        "video_id": "zero_clip_item_999",
+        "item_ids": item_ids,
+        "is_playlist": False,
+        "accepted_clips": 0,
+        "review_clips": 0,
+        "rejected_clips": 0,
+        "workspace": str(tmp_path / "worker_ws"),
+    }]
+
+    newly_processed = []
+    for r in successful_results:
+        if r.get("url") and not r.get("is_playlist"):
+            newly_processed.append(r["url"])
+        for i_id in r.get("item_ids", []):
+            newly_processed.append(f"video:{i_id}")
+
+    append_processed_sources(newly_processed, proc_file)
+
+    proc_ids = load_processed_ids(proc_file)
+    assert is_source_processed("zero_clip_item_999", proc_ids)
+    assert is_source_processed("https://youtube.com/watch?v=zero_clip_item_999", proc_ids)
+
+
+def test_playlist_all_already_processed_noop(tmp_path):
+    """Verify that when all playlist items for this shard are already processed, worker marks it as idempotent noop."""
+    from yt2avsr.downloader import DownloadResult, download
+    from yt2avsr.config import DownloadConfig
+    from unittest.mock import patch
+
+    # 1. Downloader returns DownloadResult with all_already_processed=True
+    cfg = DownloadConfig()
+    fake_info = {
+        "_type": "playlist",
+        "entries": [
+            {"id": "already_proc_1", "playlist_index": 1},
+            {"id": "already_proc_2", "playlist_index": 2},
+        ]
+    }
+    with patch("yt2avsr.downloader._extract_with_fallback", return_value=fake_info):
+        res = download(
+            "https://youtube.com/playlist?list=PL_DONE",
+            tmp_path,
+            cfg,
+            playlist=True,
+            processed_ids={"already_proc_1", "already_proc_2"},
+            shard=None,
+        )
+        assert isinstance(res, DownloadResult)
+        assert len(res) == 0
+        assert res.all_already_processed is True
+
+    # 2. Downloader returns all_already_processed=False when an item in this shard is NOT processed but fails
+    with patch("yt2avsr.downloader._extract_with_fallback", return_value=fake_info):
+        res_fail = download(
+            "https://youtube.com/playlist?list=PL_DONE",
+            tmp_path,
+            cfg,
+            playlist=True,
+            processed_ids={"already_proc_1"},  # already_proc_2 is NOT processed, but has no files on disk
+            shard=None,
+        )
+        assert isinstance(res_fail, DownloadResult)
+        assert len(res_fail) == 0
+        assert res_fail.all_already_processed is False
+
 
 

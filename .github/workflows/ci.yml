@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "perf/**"
+  pull_request:
+    branches:
+      - main
+      - "perf/**"
+
+jobs:
+  test:
+    name: CPU Tests & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg git-lfs
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Clone external auto_avsr
+        run: |
+          mkdir -p external
+          if [ ! -d "external/auto_avsr" ]; then
+            git clone --depth 1 https://github.com/mpc001/auto_avsr.git external/auto_avsr
+          fi
+
+      - name: Install Python dependencies
+        run: |
+          uv sync --python 3.11 --all-extras
+
+      - name: Run Pytest Suite
+        run: |
+          PYTHONPATH=src:external/auto_avsr uv run --python 3.11 pytest
+
+      - name: Compile Modal App Syntax
+        run: |
+          uv run --python 3.11 python -m py_compile modal_app.py
