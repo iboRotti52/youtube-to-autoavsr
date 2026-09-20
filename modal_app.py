@@ -242,7 +242,7 @@ if modal is not None:
         from yt2avsr.cloud import push, append_processed_sources
         from yt2avsr.sources import (
             sync_processed_from_hf,
-            read_processed_ids,
+            load_processed_ids,
             get_source_key,
             deduplicate_source_lines,
             partition_sources,
@@ -267,7 +267,7 @@ if modal is not None:
             except Exception as e:
                 print(f"[modal-coord] Warning: HF sync encountered an issue: {e}", flush=True)
 
-        processed_ids = read_processed_ids(cfg.sources.processed_file)
+        processed_ids = load_processed_ids(cfg.sources.processed_file)
         print(f"[modal-coord] Found {len(processed_ids)} already processed video ID(s).", flush=True)
 
         shard_tuple = None

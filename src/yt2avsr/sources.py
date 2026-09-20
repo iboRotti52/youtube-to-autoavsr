@@ -359,6 +359,10 @@ def load_processed_ids(path: Path = Path("processed_sources.txt")) -> set[str]:
     return processed
 
 
+# Alias for backward compatibility
+read_processed_ids = load_processed_ids
+
+
 def is_source_processed(url_or_id: str, processed_ids: set[str]) -> bool:
     """Check if a video URL or ID is already in processed_ids."""
     key = get_source_key(url_or_id)
