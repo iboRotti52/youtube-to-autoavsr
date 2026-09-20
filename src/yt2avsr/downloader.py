@@ -244,9 +244,9 @@ def download(
         subtitle_path = None
         subtitle_language = None
         if subtitle:
-            subtitle_path = item_dir / f"subtitles.{subtitle['ext']}"
-            subtitle_language = subtitle["language"]
-            download_text(subtitle["url"], subtitle_path)
+            subtitle_language, subtitle_url, subtitle_ext = subtitle
+            subtitle_path = item_dir / f"subtitles.{subtitle_ext}"
+            download_text(subtitle_url, subtitle_path)
 
         metadata = {
             "id": video_id,
