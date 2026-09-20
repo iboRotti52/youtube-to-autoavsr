@@ -35,7 +35,7 @@ if modal is not None:
 
     image = (
         modal.Image.debian_slim(python_version="3.11")
-        .apt_install("ffmpeg", "git", "git-lfs", "curl", "build-essential")
+        .apt_install("ffmpeg", "git", "git-lfs", "curl", "unzip", "build-essential")
         .run_commands(
             "git lfs install",
             "curl -fsSL https://deno.land/install.sh | sh",
