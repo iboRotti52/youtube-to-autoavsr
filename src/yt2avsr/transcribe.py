@@ -37,16 +37,61 @@ def _ensure_cuda_libs():
         pass
 
 
-def resolve_device(device: str) -> tuple[str, str]:
-    if device != "auto":
-        return device, "float16" if device == "cuda" else "int8"
+def _cuda_available() -> bool:
     try:
         import torch
-        if torch.cuda.is_available():
-            return "cuda", "float16"
+        return bool(torch.cuda.is_available())
     except Exception:
-        pass
+        return False
+
+
+# ctranslate2 CPU backend'inde güvenli compute türleri. float16/bfloat16 gibi
+# GPU türleri CPU'da ya desteklenmez ya yavaştır; açıkça verilse bile int8'e
+# düşülür (uyarıyla).
+_CPU_SAFE_COMPUTE = {"int8", "int8_float32", "int8_float16", "int8_bfloat16", "float32"}
+
+
+def resolve_device(device: str) -> tuple[str, str]:
+    # faster-whisper has no MPS backend, so never force MPS: Mac falls back
+    # to CPU/int8 which is explicit and supported.
+    normalized = (device or "auto").strip().lower()
+    if normalized == "mps":
+        print(
+            "[whisper] device='mps' is not supported by faster-whisper; "
+            "falling back to device='cpu' compute='int8'.",
+            flush=True,
+        )
+        return "cpu", "int8"
+    if normalized == "cuda":
+        if _cuda_available():
+            return "cuda", "float16"
+        print(
+            "[whisper] device='cuda' istendi ama CUDA bulunamadi; "
+            "device='cpu' compute='int8' kullaniliyor.",
+            flush=True,
+        )
+        return "cpu", "int8"
+    if normalized != "auto":
+        return normalized, "int8"
+    if _cuda_available():
+        return "cuda", "float16"
     return "cpu", "int8"
+
+
+def resolve_compute(device: str, compute_setting: str) -> str:
+    """Resolve compute_type, guarding CPU against GPU-only compute types."""
+    if compute_setting != "auto":
+        compute = compute_setting
+    else:
+        compute = "float16" if device == "cuda" else "int8"
+    if device == "cpu" and compute not in _CPU_SAFE_COMPUTE:
+        print(
+            f"[whisper] compute_type='{compute}' CPU'da desteklenmiyor; "
+            "compute='int8' kullaniliyor.",
+            flush=True,
+        )
+        return "int8"
+    return compute
 
 
 @lru_cache(maxsize=4)
@@ -105,10 +150,17 @@ def transcript_similarity(first: str, second: str) -> float:
 
 def transcribe(video: Path, words_output: Path, language: str,
                cfg: TranscriptionConfig) -> list[dict[str, Any]]:
-    device, default_compute = resolve_device(cfg.device)
-    compute_type = default_compute if cfg.compute_type == "auto" else cfg.compute_type
+    device, _ = resolve_device(cfg.device)
+    compute_type = resolve_compute(device, cfg.compute_type)
     num_workers = getattr(cfg, "num_workers", 1)
-    model = _load_model(cfg.model, device, compute_type, num_workers=num_workers)
+    try:
+        model = _load_model(cfg.model, device, compute_type, num_workers=num_workers)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Whisper model '{cfg.model}' yüklenemedi ({exc}). "
+            "İnternet bağlantını kontrol edip önceden indirmeyi dene: "
+            "ytavsr setup-whisper --config configs/default.yaml"
+        ) from exc
     print(f"[whisper] transcribing {video}", flush=True)
     segments, info = model.transcribe(
         str(video), language=language, beam_size=cfg.beam_size,

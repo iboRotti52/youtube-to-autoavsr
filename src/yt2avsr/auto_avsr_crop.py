@@ -57,8 +57,23 @@ def _get_components(cfg: AutoAVSRConfig):
         if not (repo / "preparation").exists():
             raise RuntimeError(
                 f"Official Auto-AVSR repository not found at {repo}. "
-                "Run: yt2avsr setup-external"
+                "Run: yt2avsr setup-external --config configs/default.yaml"
             )
+        if cfg.detector == "retinaface":
+            try:
+                import ibug.face_detection  # noqa: F401
+                import torch  # noqa: F401
+            except Exception as exc:
+                raise RuntimeError(
+                    "RetinaFace detector needs torch + ibug packages. "
+                    "Install them with: ytavsr setup-retinaface "
+                    "(or use the default MediaPipe pipeline: "
+                    "--config configs/default.yaml)"
+                ) from exc
+        print(
+            f"[auto-avsr] detector={cfg.detector} device={_device(cfg.device)}",
+            flush=True,
+        )
         sys.path.insert(0, str(repo))
         try:
             if cfg.detector == "retinaface":

@@ -37,6 +37,12 @@ def require_binary(name: str) -> None:
     if shutil.which(name) is None:
         ensure_ffmpeg()
     if shutil.which(name) is None:
+        if name == "ffmpeg":
+            raise RuntimeError(
+                "Required executable not found on PATH: ffmpeg (ffprobe ile birlikte). "
+                "Kur: macOS -> 'brew install ffmpeg' | Ubuntu -> "
+                "'sudo apt install -y ffmpeg' | Windows -> 'winget install Gyan.FFmpeg'."
+            )
         raise RuntimeError(f"Required executable not found on PATH: {name}")
 
 

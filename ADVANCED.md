@@ -68,15 +68,27 @@ ytavsr modal --shard 0 --force
 
 ## 💻 Yerel (Local) Çalıştırma Seçenekleri
 
-Kendi bilgisayarınızda (GPU veya Mac CPU) çalıştırırken kullanabileceğiniz komutlar:
+Kendi bilgisayarınızda (GPU veya Mac CPU) çalıştırırken kullanabileceğiniz komutlar.
+`--config` vermezseniz ekip komutları (`process`, `process-playlist`, `process-local`,
+`process-sources`, `process-both-sources`, `push-data`, `sync-processed`, …)
+otomatikman `configs/default.yaml` yükler; yani çıplak komut `--config configs/default.yaml`
+vermiş gibi davranır (detector: **MediaPipe**, 1080p, ortak HF reposu). Açıkça başka
+`--config` verirseniz sizinki kazanır (örn. RetinaFace için `configs/retina_1080p.yaml`):
 
 ```bash
 # Belirli bir yerel video dosyasını veya klasörünü işlemek:
 ytavsr process-local /yol/video.mp4
 ytavsr process-local /yol/videolar_klasoru/
+# (Klasör verilirse içindeki .mp4/.mkv/.webm/.mov/.m4v dosyalarının hepsi
+# alfabetik sırayla işlenir; başka dosyalar atlanır. Boş/uygunsuz klasörde
+# anlaşılır bir hata verilir.)
 
 # Farklı bir kaynak dosyasını yerelde işlemek:
 ytavsr process-sources sources_voiceover.txt --profile voiceover
+
+# RetinaFace ile çalıştırmak (güçlü GPU; torch + ibug gerekir):
+ytavsr setup-retinaface --config configs/retina_1080p.yaml  # bir kez
+ytavsr process-local /yol/video.mp4 --config configs/retina_1080p.yaml
 
 # Özel yapılandırma dosyası (YAML) ile çalıştırmak:
 ytavsr --config configs/custom.yaml --shard 0
@@ -84,6 +96,13 @@ ytavsr --config configs/custom.yaml --shard 0
 # Tamamlanan aşamaları zorla baştan çalıştırmak:
 ytavsr --force
 ```
+
+**Lokal varsayılanlar (Mac):**
+- Detector: `mediapipe` (RetinaFace kurulumu gerekmez).
+- Whisper (`faster-whisper` MPS desteklemez): `auto` → CUDA varsa `cuda/float16`, yoksa `cpu/int8`. Açıkça `mps` veya CUDA'sız makinede `cuda` yazılırsa uyarıyla `cpu/int8`'e düşülür; CPU'da GPU'ya özel `compute_type` (örn. `float16`) verilirse uyarıyla `int8`'e düşülür.
+- Her local koşunun başında kullanılan `detector`, `auto_avsr_device`, `whisper_device/compute/model` logda tek satır olarak görünür (`process-both-sources` iki profil çalıştırsa da bir kez).
+- `setup-retinaface` yalnız güçlü-GPU local akışı içindir; **Modal için gerekmez** (Modal container bağımlılıkları kendisi kurar).
+- Eksik bağımlılıklar anlaşılır hata verir: `ffmpeg`/`ffprobe` yoksa kurulum komutuyla, Auto-AVSR yoksa `setup-external` komutuyla, Whisper modeli inemezse `setup-whisper` komutuyla yönlendirilir.
 
 ---
 

@@ -46,15 +46,22 @@ RetinaFace ve 1080p kesimleri Modal bulut GPU üzerinde çalışır. Üretilen k
 ```bash
 ytavsr modal --shard 0    # (Shard numaranızı yazın: 0, 1 veya 2)
 ```
+*(Modal container kendi bağımlılıklarını (ffmpeg, torch, RetinaFace/ibug) kendisi kurar; Modal kullanmak için local'de `setup-retinaface` yapmanıza **gerek yok**.)*
 
 #### Yöntem B: Kendi Bilgisayarında (Lokal CPU/GPU) İşleme
-Modal kullanmadan kendi bilgisayarınızda işlemek isterseniz:
+Modal kullanmadan kendi bilgisayarınızda işlemek isterseniz. Lokal akış varsayılan olarak **MediaPipe** detector kullanır (Mac CPU'da ek kurulum gerekmez, `--config` vermenize gerek yok):
 ```bash
 # 1. Kendi shard'ınızı yerelde işleyin:
 ytavsr process-both-sources --shard 0  # (Shard numaranızı yazın: 0, 1 veya 2)
 
 # 2. Üretilen kabul edilmiş klipleri Hugging Face deposuna yükleyin:
 ytavsr push-data
+```
+
+Tek bir yerel video veya bir klasördeki tüm videoları işlemek için:
+```bash
+ytavsr process-local video.mp4          # tek dosya
+ytavsr process-local ./videolar_klasoru/ # klasördeki .mp4/.mkv/.webm/.mov/.m4v dosyalarının hepsi (sıralı)
 ```
 
 > 💡 **Nasıl çalışır?** Modal ve lokal akışta sıra aynıdır: önce iki kaynak listesinin tamamı deduplicate edilir, sonra tam liste shard'lara partition edilir, en son yalnızca atanmış shard içindeki processed kaynaklar atlanır. Böylece yeni videolar eklense veya başka shard tamamlanmış olsa da sahiplik kaymaz.
@@ -86,6 +93,7 @@ cd youtube-to-autoavsr
 source ~/.zshrc    # Linux kullanıyorsanız: source ~/.bashrc
 ```
 *(Bu sayede terminalde doğrudan `ytavsr` komutu tanımlanır).*
+*(`setup_once.sh` lokal MediaPipe akışı için gerekenleri kurar: paket + Auto-AVSR + Whisper modeli. RetinaFace dahil **değildir**; GPU/Modal akışı için gerekirse ayrıca çalıştırın: `ytavsr setup-retinaface --config configs/retina_1080p.yaml`.)*
 
 ---
 
