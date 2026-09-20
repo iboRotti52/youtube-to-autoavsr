@@ -34,7 +34,10 @@ def _current_commit() -> str:
     ).strip()
 
 
-CURRENT_COMMIT = _current_commit()
+try:
+    CURRENT_COMMIT = _current_commit()
+except subprocess.CalledProcessError:
+    CURRENT_COMMIT = "unknown"
 
 
 if modal is not None:
@@ -84,6 +87,7 @@ if modal is not None:
         .env(
             {
                 "PYTHONPATH": "/root/current/src:/root/youtube-to-autoavsr/external/auto_avsr",
+                "PARITY_CURRENT_COMMIT": CURRENT_COMMIT,
                 "LD_LIBRARY_PATH": "/usr/local/lib/python3.11/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib",
             }
         )
@@ -149,8 +153,9 @@ Pipeline(cfg, force=True, profile='no_voiceover').process_local(Path({str(VIDEO_
 
         baseline_workspace = Path("/workspace/runs/retina_parity_baseline")
         current_workspace = Path("/workspace/runs/retina_parity_current")
+        current_commit = os.environ.get("PARITY_CURRENT_COMMIT", "unknown")
         print(f"Baseline commit: {BASELINE_COMMIT}", flush=True)
-        print(f"Current commit: {CURRENT_COMMIT}", flush=True)
+        print(f"Current commit: {current_commit}", flush=True)
         print(f"Pinned video SHA256: {actual_hash}", flush=True)
         print("Environment: NVIDIA T4, RetinaFace, configs/retina_1080p.yaml", flush=True)
 
@@ -192,7 +197,7 @@ Pipeline(cfg, force=True, profile='no_voiceover').process_local(Path({str(VIDEO_
                 and not timestamp_mismatches
             ),
             "baseline_commit": BASELINE_COMMIT,
-            "current_commit": CURRENT_COMMIT,
+            "current_commit": current_commit,
             "video_sha256": actual_hash,
             "baseline_count": len(baseline),
             "current_count": len(current),
