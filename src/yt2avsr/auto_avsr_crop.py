@@ -183,13 +183,13 @@ def crop_with_official_auto_avsr(source: Path, output: Path,
     if landmark_source is not None and start_seconds is not None:
         cached_landmarks, landmark_fps = _read_cached_landmarks(landmark_source, cfg)
         if duration_seconds is not None:
-            source_frame_count = max(1, int(round(duration_seconds * landmark_fps)))
+            source_frame_count = max(1, int(np.floor(duration_seconds * landmark_fps + 0.5)))
             fps = landmark_fps
         else:
             source_frame_count, fps = _probe_frame_count(source)
         if source_frame_count == 0:
             raise RuntimeError("Source clip has no frames")
-        start_frame = max(0, int(round(start_seconds * landmark_fps)))
+        start_frame = max(0, int(np.floor(start_seconds * landmark_fps + 0.5)))
         frames, _ = _read_rgb_frame_slice(
             landmark_source, start_frame, source_frame_count
         )

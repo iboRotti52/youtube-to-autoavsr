@@ -105,8 +105,8 @@ def analyze_visual_quality(
         raise RuntimeError(f"Cannot open visual quality input: {video_path}")
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    start_frame = max(0, int(round(start_seconds * fps)))
-    total_frames = int(round(duration_seconds * fps)) if duration_seconds is not None else None
+    start_frame = max(0, int(np.floor(start_seconds * fps + 0.5)))
+    total_frames = int(np.floor(duration_seconds * fps + 0.5)) if duration_seconds is not None else None
 
     if start_frame > 0:
         cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
