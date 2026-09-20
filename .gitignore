@@ -20,3 +20,4 @@ dist/
 .*.filtered.txt
 *.tmp
 .Rhistory
+uv.lock

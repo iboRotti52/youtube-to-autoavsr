@@ -88,7 +88,7 @@ if modal is not None:
         volumes={"/workspace": volume},
     )
     def process_single_video_modal(job: dict[str, Any]) -> dict[str, Any]:
-        """Runs video processing for a single video in an isolated Modal GPU worker container."""
+        """Runs video processing for a single video or playlist in an isolated Modal GPU worker container."""
         import json
         import traceback
 
@@ -100,6 +100,8 @@ if modal is not None:
         video_id = job.get("video_id", "unknown")
         config_path = job.get("config_path", "configs/retina_1080p.yaml")
         hf_token = job.get("hf_token")
+        is_playlist = bool(job.get("is_playlist", False))
+        shard_tuple = job.get("shard")
 
         if hf_token:
             os.environ["HF_TOKEN"] = hf_token
@@ -112,27 +114,35 @@ if modal is not None:
 
         cfg = load_config(Path(config_path))
         cfg.workspace = video_workspace
+        # Worker isolation: isolate processed_sources to this worker workspace and disable auto sync in worker
+        cfg.sources.processed_file = video_workspace / "processed_sources.txt"
+        cfg.sources.auto_sync_hf = False
         cfg.auto_avsr.repo_dir = Path("/root/youtube-to-autoavsr/external/auto_avsr")
         cfg.auto_avsr.detector = "retinaface"
         cfg.normalization.max_height = 1080
         cfg.download.format = "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
 
-        print(f"[modal-worker] [{video_id}] Starting video {url} ({profile}) in {video_workspace}...", flush=True)
+        print(
+            f"[modal-worker] [{video_id}] Starting {url} (profile={profile}, playlist={is_playlist}) in {video_workspace}...",
+            flush=True,
+        )
 
         try:
-            pipe = Pipeline(cfg, force=False, profile=profile)
-            pipe.process_url(url)
+            pipe = Pipeline(cfg, force=False, profile=profile, shard=shard_tuple)
+            pipe.process_url(url, playlist=is_playlist)
 
-            # Collect results for this video
-            recs = []
+            # Discover actual item directories created in clips
+            clips_dir = video_workspace / "clips"
+            item_ids = [p.name for p in clips_dir.iterdir() if p.is_dir()] if clips_dir.exists() else []
+
+            # Count clips
             accepted_count = 0
             review_count = 0
             rejected_count = 0
 
-            for meta_p in sorted((video_workspace / "clips").glob("*/*/metadata.json")):
+            for meta_p in sorted(clips_dir.glob("*/*/metadata.json")):
                 try:
                     rec = json.loads(meta_p.read_text(encoding="utf-8"))
-                    recs.append(rec)
                     st = rec.get("quality_status")
                     if st == "accepted":
                         accepted_count += 1
@@ -144,15 +154,26 @@ if modal is not None:
                     pass
 
             print(
-                f"[modal-worker] [{video_id}] Finished: {accepted_count} accepted, {review_count} review, {rejected_count} rejected.",
+                f"[modal-worker] [{video_id}] Finished: items={item_ids}, {accepted_count} accepted, {review_count} review, {rejected_count} rejected.",
                 flush=True,
             )
 
-            # Explicit volume commit from worker
+            # Explicit volume commit from worker; FAILURE IS A FATAL WORKER FAILURE
             try:
                 volume.commit()
             except Exception as e:
-                print(f"[modal-worker] [{video_id}] Warning: volume.commit() failed: {e}", flush=True)
+                print(f"[modal-worker] [{video_id}] Fatal: volume.commit() failed: {e}", flush=True)
+                return {
+                    "success": False,
+                    "url": url,
+                    "video_id": video_id,
+                    "profile": profile,
+                    "workspace": str(video_workspace),
+                    "error": f"volume.commit() failed: {e}",
+                    "accepted_clips": 0,
+                    "review_clips": 0,
+                    "rejected_clips": 0,
+                }
 
             return {
                 "success": True,
@@ -160,10 +181,10 @@ if modal is not None:
                 "video_id": video_id,
                 "profile": profile,
                 "workspace": str(video_workspace),
+                "item_ids": item_ids,
                 "accepted_clips": accepted_count,
                 "review_clips": review_count,
                 "rejected_clips": rejected_count,
-                "records": recs,
             }
         except Exception as exc:
             print(f"[modal-worker] [{video_id}] Error processing {url}: {exc}", flush=True)
@@ -182,7 +203,6 @@ if modal is not None:
                 "accepted_clips": 0,
                 "review_clips": 0,
                 "rejected_clips": 0,
-                "records": [],
             }
 
 
@@ -206,11 +226,12 @@ if modal is not None:
         gpu: str = "T4",
         cpu: float = 4.0,
         max_containers: int = 5,
+        cleanup_volume: bool = False,
     ) -> dict[str, Any]:
         """Coordinator function: dispatches videos to parallel GPU workers, reloads volume, aggregates manifests, and uploads to HF."""
         import json
         import shutil
-        import time
+        import uuid
 
         os.chdir("/root/youtube-to-autoavsr")
 
@@ -226,10 +247,12 @@ if modal is not None:
             get_source_key,
             deduplicate_source_lines,
             partition_sources,
+            is_playlist_source,
         )
 
         cfg = load_config(Path(config_path))
-        run_id = f"run_{int(time.time())}"
+        # UUID-based run_id prevents volume collisions across concurrent runs
+        run_id = f"run_{uuid.uuid4().hex[:12]}"
         run_root = Path(f"/workspace/runs/{run_id}")
         run_root.mkdir(parents=True, exist_ok=True)
 
@@ -294,6 +317,7 @@ if modal is not None:
                 "push_result": None,
                 "contributor": contributor,
                 "tar_bytes": None,
+                "run_id": run_id,
             }
 
         # Apply limit if specified
@@ -304,18 +328,23 @@ if modal is not None:
         # 3. Build job items for per-video workers
         job_items = []
         for i, (profile, url) in enumerate(sources_pairs):
-            vid = get_source_key(url) or f"video_{i:04d}"
+            raw_key = get_source_key(url) or f"video_{i:04d}"
+            # Strip prefix like 'video:' or 'playlist:' for safe directory naming
+            clean_vid = raw_key.split(":", 1)[-1] if ":" in raw_key else raw_key
+            is_playlist = is_playlist_source("auto", url)
             job_items.append({
                 "url": url,
                 "profile": profile,
                 "run_id": run_id,
-                "video_id": vid,
+                "video_id": clean_vid,
                 "config_path": config_path,
                 "hf_token": hf_token,
+                "is_playlist": is_playlist,
+                "shard": shard_tuple,
             })
 
         print(
-            f"[modal-coord] Launching distributed execution on Modal: {len(job_items)} video(s) "
+            f"[modal-coord] Launching distributed execution on Modal: {len(job_items)} item(s) "
             f"across workers (gpu={gpu}, cpu={cpu}, max_containers={max_containers})...",
             flush=True,
         )
@@ -343,7 +372,7 @@ if modal is not None:
             flush=True,
         )
 
-        # 4. Reload Volume and aggregate worker outputs
+        # 4. Reload Volume and aggregate worker outputs (with explicit duplicate item detection)
         print("[modal-coord] Reloading volume to aggregate worker outputs...", flush=True)
         volume.reload()
 
@@ -352,29 +381,37 @@ if modal is not None:
         aggregated_clips.mkdir(parents=True, exist_ok=True)
 
         for res in successful_results:
-            vid = res["video_id"]
-            src_clips = Path(res["workspace"]) / "clips" / vid
-            dst_clips = aggregated_clips / vid
-            if src_clips.exists():
-                shutil.copytree(src_clips, dst_clips, dirs_exist_ok=True)
+            worker_clips = Path(res["workspace"]) / "clips"
+            if worker_clips.exists():
+                for item_dir in worker_clips.iterdir():
+                    if item_dir.is_dir():
+                        dst_clips = aggregated_clips / item_dir.name
+                        if dst_clips.exists():
+                            print(
+                                f"[modal-coord] Warning: duplicate item_id '{item_dir.name}' detected across workers! Skipping duplicate copy.",
+                                flush=True,
+                            )
+                            continue
+                        shutil.copytree(item_dir, dst_clips)
 
-        rebuild(aggregated_workspace)
+        # Manifests and records rebuilt directly from aggregated disk state
+        aggregated_records = rebuild(aggregated_workspace)
 
-        total_accepted = sum(r.get("accepted_clips", 0) for r in successful_results)
-        total_review = sum(r.get("review_clips", 0) for r in successful_results)
-        total_rejected = sum(r.get("rejected_clips", 0) for r in successful_results)
+        total_accepted = sum(1 for r in aggregated_records if r.get("quality_status") == "accepted")
+        total_review = sum(1 for r in aggregated_records if r.get("quality_status") == "review")
+        total_rejected = sum(1 for r in aggregated_records if r.get("quality_status") == "rejected")
 
         print(
             f"[modal-coord] Aggregated clips: {total_accepted} accepted, {total_review} review, {total_rejected} rejected.",
             flush=True,
         )
 
-        # 5. Push to Hugging Face
+        # 5. Push to Hugging Face (even if accepted+review == 0, push manifests so completion is archived)
         push_result = None
         newly_processed = []
-        if push_hf and cfg.cloud.repo_id and (total_accepted + total_review > 0):
+        if push_hf and cfg.cloud.repo_id and successful_results:
             try:
-                print(f"[modal-coord] Uploading clips to Hugging Face dataset '{cfg.cloud.repo_id}'...", flush=True)
+                print(f"[modal-coord] Uploading clips & manifests to Hugging Face dataset '{cfg.cloud.repo_id}'...", flush=True)
                 push_result = push(
                     aggregated_workspace,
                     repo_id=cfg.cloud.repo_id,
@@ -385,15 +422,11 @@ if modal is not None:
                 )
                 print(f"[modal-coord] Upload complete: {push_result}", flush=True)
 
-                # Only on successful HF push: update newly processed records
-                for res in successful_results:
-                    for rec in res.get("records", []):
-                        if rec.get("quality_status") in ("accepted", "review"):
-                            newly_processed.append(rec)
-
+                # On successful HF push, record all evaluated videos (including 100% rejected ones) in processed_sources.txt
+                newly_processed = aggregated_records
                 if newly_processed:
                     added = append_processed_sources(newly_processed, cfg.sources.processed_file)
-                    print(f"[modal-coord] Recorded {added} newly processed video(s).", flush=True)
+                    print(f"[modal-coord] Recorded {added} newly processed video(s) in {cfg.sources.processed_file}.", flush=True)
             except Exception as e:
                 print(f"[modal-coord] Error during Hugging Face upload: {e}", flush=True)
                 push_result = f"Failed: {e}"
@@ -423,8 +456,22 @@ if modal is not None:
                             pass
             tar_bytes = buf.getvalue()
 
+        # 7. Volume cleanup if requested
+        if cleanup_volume:
+            print(f"[modal-coord] Cleaning up volume run directory: {run_root}", flush=True)
+            try:
+                shutil.rmtree(run_root, ignore_errors=True)
+                volume.commit()
+                print(f"[modal-coord] Successfully cleaned up {run_root}", flush=True)
+            except Exception as e:
+                print(f"[modal-coord] Warning: Failed to cleanup volume run dir: {e}", flush=True)
+
+        has_failures = bool(failed_jobs)
+        upload_failed = bool(push_result and push_result.startswith("Failed:"))
+        overall_success = (not has_failures) and (not upload_failed)
+
         return {
-            "success": True,
+            "success": overall_success,
             "total_processed": len(successful_results),
             "failed_videos": len(failed_jobs),
             "accepted_clips": total_accepted,
@@ -434,6 +481,7 @@ if modal is not None:
             "newly_processed_records": newly_processed,
             "contributor": contributor,
             "tar_bytes": tar_bytes,
+            "run_id": run_id,
         }
 
 
@@ -451,6 +499,7 @@ if modal is not None:
         hf_token: str = "",
         contributor: str = "",
         config: str = "configs/retina_1080p.yaml",
+        cleanup_volume: bool = False,
     ):
         """CLI local entrypoint for running YouTube -> Auto-AVSR on Modal."""
         from yt2avsr.cloud import check_hf_login_or_warn, append_processed_sources
@@ -522,6 +571,7 @@ if modal is not None:
         print(f"  • Shard: {shard_display}")
         print(f"  • Hugging Face Kullanıcısı: {active_contributor}")
         print(f"  • Hugging Face'e Yükle: {'Hayır (--no-push)' if no_push else 'Evet (Otomatik)'}")
+        print(f"  • Volume Temizleme: {'Evet (--cleanup-volume)' if cleanup_volume else 'Hayır'}")
         print("=" * 70 + "\n")
 
         result = process_sources_on_modal.remote(
@@ -538,16 +588,25 @@ if modal is not None:
             gpu=gpu,
             cpu=cpu,
             max_containers=max_containers,
+            cleanup_volume=cleanup_volume,
         )
 
+        success = result.get("success", False)
+        failed_count = result.get("failed_videos", 0)
+
         print("\n" + "=" * 70)
-        print("✅ MODAL İŞLEMİ TAMAMLANDI!")
-        print(f"  • İşlenen Video Sayısı: {result.get('total_processed', 0)}")
-        print(f"  • Kabul Edilen Klip:    {result.get('accepted_clips', 0)}")
-        print(f"  • İnceleme Klibi:       {result.get('review_clips', 0)}")
-        print(f"  • Reddedilen Klip:      {result.get('rejected_clips', 0)}")
+        if success:
+            print("✅ MODAL İŞLEMİ BAŞARIYLA TAMAMLANDI!")
+        else:
+            print("⚠️ MODAL İŞLEMİ KISMİ VEYA TAM BAŞARISIZLIKLA SONLANDI!")
+            if failed_count > 0:
+                print(f"  • Başarısız Video Sayısı: {failed_count}")
+        print(f"  • Başarılı Video Sayısı:  {result.get('total_processed', 0)}")
+        print(f"  • Kabul Edilen Klip:      {result.get('accepted_clips', 0)}")
+        print(f"  • İnceleme Klibi:         {result.get('review_clips', 0)}")
+        print(f"  • Reddedilen Klip:        {result.get('rejected_clips', 0)}")
         if result.get("push_result"):
-            print(f"  • Hugging Face Durumu:  {result.get('push_result')}")
+            print(f"  • Hugging Face Durumu:    {result.get('push_result')}")
         print("=" * 70)
 
         # Update local processed_sources.txt
@@ -566,6 +625,10 @@ if modal is not None:
             with tarfile.open(fileobj=buf, mode="r:gz") as tar:
                 tar.extractall(path=str(REPO_ROOT / "data"))
             print("✅ Yerel klasöre kopyalandı: data/")
+
+        if not success:
+            print("Modal görevi hata(lar) ile sonuçlandığı için işlem başarısız olarak işaretlendi.", file=sys.stderr)
+            sys.exit(1)
 
 
 if __name__ == "__main__":

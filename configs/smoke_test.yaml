@@ -1,0 +1,5 @@
+extends: retina_1080p.yaml
+
+cloud:
+  repo_id: "avsr-tr-ekip/avsr-tr-dataset-smoke"
+  private: true

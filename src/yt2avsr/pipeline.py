@@ -265,7 +265,7 @@ class Pipeline:
         workers = getattr(self.cfg, "processing", None)
         max_workers = workers.max_workers if workers else 4
         if max_workers > 1 and len(segments) > 1:
-            self.cfg.transcription.num_workers = max(self.cfg.transcription.num_workers, max_workers)
+            # Respect cfg.transcription.num_workers (default 1) to prevent VRAM over-allocation on 16GB T4.
             if self.cfg.transcription.verify_clips:
                 try:
                     from .transcribe import _load_model, resolve_device

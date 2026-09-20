@@ -147,10 +147,15 @@ def push(
 
     contributor = _slug(contributor) if contributor else _default_contributor(token)
     clip_dirs = _iter_clip_dirs(workspace, statuses)
+    manifests_dir = workspace / "manifests"
     if not clip_dirs:
-        raise RuntimeError(
-            f"No clips with status {statuses} found. Nothing to upload."
-        )
+        if not manifests_dir.exists() or not any(manifests_dir.iterdir()):
+            raise RuntimeError(
+                f"No clips with status {statuses} and no manifests found under {workspace}. Nothing to upload."
+            )
+        commit_msg = f"Add manifests from {contributor} (0 usable clips)"
+    else:
+        commit_msg = f"Add {len(clip_dirs)} clips from {contributor} ({','.join(statuses)})"
 
     # Precise single-commit selection: only chosen clip folders + all manifests.
     allow_patterns = ["manifests/**"]
@@ -177,7 +182,7 @@ def push(
         repo_type="dataset",
         allow_patterns=allow_patterns,
         ignore_patterns=ignore_patterns,
-        commit_message=f"Add {len(clip_dirs)} clips from {contributor} ({','.join(statuses)})",
+        commit_message=commit_msg,
     )
     return f"{repo_id}:{path_in_repo} ({len(clip_dirs)} clips)"
 
