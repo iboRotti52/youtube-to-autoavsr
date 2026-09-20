@@ -43,6 +43,26 @@ def test_process_both_sources_partitions_before_processed_filter(tmp_path, monke
     assert downloaded_urls == [no_voiceover[0], no_voiceover[2], voiceover[1]]
 
 
+def test_process_both_sources_zero_assignment_is_successful_noop(tmp_path, monkeypatch, capsys):
+    (tmp_path / "sources_no_voiceover.txt").write_text(
+        "https://www.youtube.com/watch?v=only_shard_zero\n"
+    )
+    (tmp_path / "sources_voiceover.txt").write_text("")
+    cfg = AppConfig(workspace=tmp_path / "data")
+    cfg.sources.processed_file = tmp_path / "processed_sources.txt"
+    cfg.sources.auto_sync_hf = False
+    cfg.processing.max_workers = 1
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("yt2avsr.cli.load_config", lambda _: cfg)
+
+    from yt2avsr.cli import process_both_sources
+
+    process_both_sources(shard="1/2")
+
+    assert "pending source" in capsys.readouterr().out.lower()
+
+
 def test_local_zero_clip_completion_is_uploaded_for_hf_sync(tmp_path, monkeypatch):
     cfg = AppConfig(workspace=tmp_path / "data")
     cfg.sources.processed_file = tmp_path / "processed_sources.txt"

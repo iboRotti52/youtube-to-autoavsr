@@ -434,6 +434,9 @@ def process_both_sources(
         ran.append(path.name)
 
     if not ran:
+        if shard_tuple:
+            typer.echo("Bu shard için pending source yok; işlem yapılmadı.")
+            return
         if total_skipped_processed > 0:
             typer.echo("All sources have already been processed.")
             return
