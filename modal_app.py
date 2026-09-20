@@ -127,6 +127,7 @@ if modal is not None:
         )
 
         try:
+            pipe = Pipeline(cfg, force=False, profile=profile, shard=shard_tuple)
             items = pipe.process_url(url, playlist=is_playlist)
             if not items:
                 print(f"[modal-worker] [{video_id}] Warning: No items downloaded from {url}.", flush=True)
