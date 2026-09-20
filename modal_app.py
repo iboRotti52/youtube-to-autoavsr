@@ -500,6 +500,7 @@ if modal is not None:
         contributor: str = "",
         config: str = "configs/retina_1080p.yaml",
         cleanup_volume: bool = False,
+        sources_file: str = "",
     ):
         """CLI local entrypoint for running YouTube -> Auto-AVSR on Modal."""
         from yt2avsr.cloud import check_hf_login_or_warn, append_processed_sources
@@ -522,11 +523,29 @@ if modal is not None:
         voiceover_lines = []
 
         if url:
+            urls = [u.strip() for u in url.split(",") if u.strip()]
             if voiceover:
-                voiceover_lines = [url]
+                voiceover_lines = urls
             else:
-                no_voiceover_lines = [url]
-            print(f"🎯 Single video mode: {url} ({'voiceover' if voiceover else 'no_voiceover'})")
+                no_voiceover_lines = urls
+            print(f"🎯 Direct URL mode: {len(urls)} video(s) ({'voiceover' if voiceover else 'no_voiceover'})")
+        elif sources_file:
+            s_path = Path(sources_file)
+            if not s_path.is_absolute():
+                s_path = REPO_ROOT / s_path
+            if not s_path.exists():
+                print(f"Hata: Belirtilen kaynak dosyası bulunamadı: {sources_file}", file=sys.stderr)
+                sys.exit(1)
+            lines = [
+                l.strip()
+                for l in s_path.read_text(encoding="utf-8").splitlines()
+                if l.strip() and not l.strip().startswith("#")
+            ]
+            if voiceover:
+                voiceover_lines = lines
+            else:
+                no_voiceover_lines = lines
+            print(f"📂 Sources file mode: {len(lines)} link(s) from {sources_file} ({'voiceover' if voiceover else 'no_voiceover'})")
         else:
             nvo_path = REPO_ROOT / "sources_no_voiceover.txt"
             vo_path = REPO_ROOT / "sources_voiceover.txt"
