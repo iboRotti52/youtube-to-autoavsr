@@ -137,4 +137,10 @@ cloud:
   repo_id: "avsr-tr-ekip/avsr-tr-dataset"
   private: true
 
+processing:
+  # Paralel klip işleme iş parçacığı sayısı: 'auto' (işlemci çekirdek sayısına göre otomatik belirler)
+  # veya elle sayı verilebilir (örn: 4, 6, 8)
+  max_workers: auto
+
+
 

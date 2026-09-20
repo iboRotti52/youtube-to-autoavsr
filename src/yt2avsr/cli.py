@@ -29,8 +29,11 @@ def process(
     force: Annotated[bool, typer.Option()] = False,
     profile: Annotated[str, typer.Option("--profile", help="no_voiceover or voiceover")] = "no_voiceover",
     shard: Annotated[str | None, typer.Option("--shard", "-s", help="Shard index/total, e.g. 0/3")] = None,
+    workers: Annotated[int | None, typer.Option("--workers", "-w", help="Number of worker threads (default: auto based on CPU cores)")] = None,
 ):
     cfg = load_config(config)
+    if workers is not None:
+        cfg.processing.max_workers = workers
     shard_tuple = parse_shard(shard)
     Pipeline(cfg, force=force, profile=profile, shard=shard_tuple).process_url(url)
     typer.echo(f"Done: {cfg.workspace / 'manifests' / 'accepted.csv'}")
@@ -42,16 +45,23 @@ def playlist(
     force: Annotated[bool, typer.Option()] = False,
     profile: Annotated[str, typer.Option("--profile", help="no_voiceover or voiceover")] = "no_voiceover",
     shard: Annotated[str | None, typer.Option("--shard", "-s", help="Shard index/total, e.g. 0/3")] = None,
+    workers: Annotated[int | None, typer.Option("--workers", "-w", help="Number of worker threads (default: auto based on CPU cores)")] = None,
 ):
     cfg = load_config(config)
+    if workers is not None:
+        cfg.processing.max_workers = workers
     shard_tuple = parse_shard(shard)
     Pipeline(cfg, force=force, profile=profile, shard=shard_tuple).process_url(url, playlist=True)
 
 @app.command("process-local")
 def local(path:Annotated[Path,typer.Argument()],config:Annotated[Path|None,typer.Option("--config","-c")]=None,
           force:Annotated[bool,typer.Option()]=False,
-          profile: Annotated[str, typer.Option("--profile", help="no_voiceover or voiceover")] = "no_voiceover"):
-    cfg=load_config(config); Pipeline(cfg,force=force,profile=profile).process_local(path)
+          profile: Annotated[str, typer.Option("--profile", help="no_voiceover or voiceover")] = "no_voiceover",
+          workers: Annotated[int | None, typer.Option("--workers", "-w", help="Number of worker threads (default: auto based on CPU cores)")] = None):
+    cfg=load_config(config)
+    if workers is not None:
+        cfg.processing.max_workers = workers
+    Pipeline(cfg,force=force,profile=profile).process_local(path)
 
 
 @app.command("process-sources")
@@ -76,8 +86,14 @@ def process_sources(
         str | None,
         typer.Option("--shard", "-s", help="Shard index/total, e.g. 0/3"),
     ] = None,
+    workers: Annotated[
+        int | None,
+        typer.Option("--workers", "-w", help="Number of worker threads (default: auto based on CPU cores)"),
+    ] = None,
 ):
     cfg = load_config(config)
+    if workers is not None:
+        cfg.processing.max_workers = workers
     shard_tuple = parse_shard(shard)
     usable = _usable_source_lines(sources)
     deduped, duplicates = deduplicate_source_lines(usable)
@@ -290,8 +306,14 @@ def process_both_sources(
         str | None,
         typer.Option("--shard", "-s", help="Shard: 0/3 (İbrahim Gözlükaya), 1/3 (Damla Kemal), 2/3 (İbrahim Billurcu)"),
     ] = None,
+    workers: Annotated[
+        int | None,
+        typer.Option("--workers", "-w", help="Number of worker threads (default: auto based on CPU cores)"),
+    ] = None,
 ):
     cfg = load_config(config)
+    if workers is not None:
+        cfg.processing.max_workers = workers
     shard_tuple = parse_shard(shard)
     if shard_tuple:
         from .sources import get_shard_owner

@@ -139,9 +139,28 @@ class SourcesConfig(BaseModel):
     # Automatically sync processed videos from Hugging Face on pipeline startup
     auto_sync_hf: bool = True
 
+def resolve_workers(value: int | str | None) -> int:
+    import os
+    if isinstance(value, int) and value > 0:
+        return value
+    if isinstance(value, str) and value.strip().isdigit() and int(value.strip()) > 0:
+        return int(value.strip())
+    cpus = os.cpu_count() or 4
+    if cpus <= 2:
+        return 1
+    if cpus <= 4:
+        return max(1, cpus - 1)
+    if cpus <= 8:
+        return max(2, cpus - 2)
+    return min(16, max(4, cpus - 2))
+
 class ProcessingConfig(BaseModel):
-    # Number of concurrent worker threads for segment & clip processing
-    max_workers: int = 4
+    # Number of concurrent worker threads, or 'auto' to adapt to CPU cores
+    max_workers: int | str = "auto"
+
+    @property
+    def workers_count(self) -> int:
+        return resolve_workers(self.max_workers)
 
 class AppConfig(BaseModel):
     workspace: Path = Path("data")

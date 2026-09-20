@@ -17,6 +17,8 @@ def test_1080p_config_extends_default() -> None:
 def test_default_config_sources() -> None:
     cfg = load_config(Path("configs/default.yaml"))
     assert cfg.sources.processed_file == Path("processed_sources.txt")
-    assert cfg.processing.max_workers == 4
+    assert cfg.processing.max_workers == "auto"
+    assert cfg.processing.workers_count >= 1
+
 
 

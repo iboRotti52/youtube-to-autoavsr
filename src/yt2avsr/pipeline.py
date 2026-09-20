@@ -262,8 +262,12 @@ class Pipeline:
                 print(f"[warning] Pre-caching landmarks skipped: {exc}", flush=True)
 
         t0_clips = time.perf_counter()
-        workers = getattr(self.cfg, "processing", None)
-        max_workers = workers.max_workers if workers else 4
+        workers_cfg = getattr(self.cfg, "processing", None)
+        max_workers = (
+            workers_cfg.workers_count
+            if hasattr(workers_cfg, "workers_count")
+            else 4
+        )
         if max_workers > 1 and len(segments) > 1:
             # Respect cfg.transcription.num_workers (default 1) to prevent VRAM over-allocation on 16GB T4.
             if self.cfg.transcription.verify_clips:
@@ -276,7 +280,9 @@ class Pipeline:
                     print(f"[warning] Whisper model pre-loading failed: {exc}", flush=True)
 
             from concurrent.futures import ThreadPoolExecutor, as_completed
-            print(f"[parallel] Processing {len(segments)} segments with {max_workers} worker threads...", flush=True)
+            import os
+            total_cpus = os.cpu_count() or "?"
+            print(f"[parallel] Processing {len(segments)} segments with {max_workers} worker threads (detected {total_cpus} CPU cores)...", flush=True)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
                     executor.submit(self._process_segment, item, normalized, seg): seg
