@@ -133,9 +133,14 @@ if modal is not None:
         )
 
         try:
+            try:
+                volume.reload()
+            except Exception:
+                pass
             pipe = Pipeline(cfg, force=False, profile=profile, shard=shard_tuple)
             if url.startswith("file://") or url.startswith("/"):
-                clean_path = Path(url.replace("file://", ""))
+                clean_path = Path(url.replace("file://", "").strip())
+                print(f"[modal-worker] [{video_id}] Processing local path {clean_path} (exists={clean_path.exists()})", flush=True)
                 item = pipe.process_local(clean_path)
                 items = [item] if item else []
             else:
@@ -265,6 +270,7 @@ if modal is not None:
         from yt2avsr.config import load_config
         from yt2avsr.manifest import rebuild
         from yt2avsr.cloud import push, append_processed_sources
+        from yt2avsr.utils import safe_id
         from yt2avsr.sources import (
             sync_processed_from_hf,
             load_processed_ids,
@@ -351,10 +357,22 @@ if modal is not None:
 
         # 3. Build job items for per-video workers
         job_items = []
+        used_vids: set[str] = set()
         for i, (profile, url) in enumerate(sources_pairs):
-            raw_key = get_source_key(url) or (Path(url.replace("file://", "")).stem if ("file://" in url or "/" in url) else f"video_{i:04d}")
-            # Strip prefix like 'video:' or 'playlist:' for safe directory naming
-            clean_vid = raw_key.split(":", 1)[-1] if ":" in raw_key else raw_key
+            if url.startswith("file://") or url.startswith("/"):
+                raw_stem = Path(url.replace("file://", "").strip()).stem
+                base_vid = safe_id(raw_stem) or f"local_{i:04d}"
+            else:
+                raw_key = get_source_key(url) or f"video_{i:04d}"
+                # Strip prefix like 'video:' or 'playlist:' for safe directory naming
+                base_vid = raw_key.split(":", 1)[-1] if ":" in raw_key else raw_key
+                base_vid = safe_id(base_vid)
+
+            clean_vid = base_vid
+            if clean_vid in used_vids:
+                clean_vid = f"{base_vid}_{i:04d}"
+            used_vids.add(clean_vid)
+
             is_playlist = is_playlist_source("auto", url) if not (url.startswith("file://") or url.startswith("/")) else False
             job_items.append({
                 "url": url,
