@@ -58,6 +58,42 @@ def test_modal_app_compiles():
     assert compiled is not None
 
 
+def test_modal_external_repositories_are_pinned():
+    from yt2avsr.modal_dependency_pins import (
+        AUTO_AVSR_COMMIT,
+        FACE_ALIGNMENT_COMMIT,
+        FACE_DETECTION_COMMIT,
+    )
+
+    app_code = (Path(__file__).resolve().parent.parent / "modal_app.py").read_text(encoding="utf-8")
+    parity_code = (
+        Path(__file__).resolve().parent.parent / "scripts" / "modal_retina_parity.py"
+    ).read_text(encoding="utf-8")
+    for sha in (AUTO_AVSR_COMMIT, FACE_DETECTION_COMMIT, FACE_ALIGNMENT_COMMIT):
+        assert len(sha) == 40
+    for name in ("AUTO_AVSR_COMMIT", "FACE_DETECTION_COMMIT", "FACE_ALIGNMENT_COMMIT"):
+        assert name in app_code
+        assert name in parity_code
+    assert "git checkout --detach {AUTO_AVSR_COMMIT}" in app_code
+    assert "git checkout --detach {FACE_DETECTION_COMMIT}" in app_code
+    assert "git checkout --detach {FACE_ALIGNMENT_COMMIT}" in app_code
+    assert "git checkout --detach {AUTO_AVSR_COMMIT}" in parity_code
+    assert "git checkout --detach {FACE_DETECTION_COMMIT}" in parity_code
+    assert "git checkout --detach {FACE_ALIGNMENT_COMMIT}" in parity_code
+
+
+def test_retina_parity_uses_real_pinned_video_and_commit(tmp_path):
+    parity_code = (
+        Path(__file__).resolve().parent.parent / "scripts" / "modal_retina_parity.py"
+    ).read_text(encoding="utf-8")
+    assert "dfae6fbd1b24820adc3da880030f4c70c2375a8f" in parity_code
+    assert "7c72a1e18a73d312e6bb93106f02ce43bdbe66bc060c2e0067cc94a063ce7dbc" in parity_code
+    assert "baseline_b_metadata.tar.gz" not in parity_code
+    assert "quality_status" in parity_code
+    assert "original_text" in parity_code
+    assert "0.001" in parity_code
+
+
 def test_modal_app_ast_structure():
     import ast
     app_path = Path(__file__).resolve().parent.parent / "modal_app.py"
@@ -346,6 +382,3 @@ def test_playlist_all_already_processed_noop(tmp_path):
         assert isinstance(res_fail, DownloadResult)
         assert len(res_fail) == 0
         assert res_fail.all_already_processed is False
-
-
-

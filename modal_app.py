@@ -22,6 +22,12 @@ REPO_ROOT = Path(__file__).resolve().parent
 if str(REPO_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "src"))
 
+from yt2avsr.modal_dependency_pins import (
+    AUTO_AVSR_COMMIT,
+    FACE_ALIGNMENT_COMMIT,
+    FACE_DETECTION_COMMIT,
+)
+
 try:
     import modal
 except ImportError:
@@ -66,9 +72,9 @@ if modal is not None:
         )
         .run_commands(
             "mkdir -p /root/youtube-to-autoavsr/external",
-            "git clone --depth 1 https://github.com/mpc001/auto_avsr.git /root/youtube-to-autoavsr/external/auto_avsr",
-            "git clone https://github.com/hhj1897/face_detection.git /root/youtube-to-autoavsr/external/face_detection && cd /root/youtube-to-autoavsr/external/face_detection && git lfs pull && pip install -e .",
-            "git clone https://github.com/hhj1897/face_alignment.git /root/youtube-to-autoavsr/external/face_alignment && cd /root/youtube-to-autoavsr/external/face_alignment && git lfs pull && pip install -e .",
+            f"git clone --no-checkout https://github.com/mpc001/auto_avsr.git /root/youtube-to-autoavsr/external/auto_avsr && cd /root/youtube-to-autoavsr/external/auto_avsr && git fetch --depth 1 origin {AUTO_AVSR_COMMIT} && git checkout --detach {AUTO_AVSR_COMMIT}",
+            f"git clone --no-checkout https://github.com/hhj1897/face_detection.git /root/youtube-to-autoavsr/external/face_detection && cd /root/youtube-to-autoavsr/external/face_detection && git fetch --depth 1 origin {FACE_DETECTION_COMMIT} && git checkout --detach {FACE_DETECTION_COMMIT} && git lfs pull && pip install -e .",
+            f"git clone --no-checkout https://github.com/hhj1897/face_alignment.git /root/youtube-to-autoavsr/external/face_alignment && cd /root/youtube-to-autoavsr/external/face_alignment && git fetch --depth 1 origin {FACE_ALIGNMENT_COMMIT} && git checkout --detach {FACE_ALIGNMENT_COMMIT} && git lfs pull && pip install -e .",
             "python3 -c 'import os, site; pths = [os.path.join(s, \"nvidia\", sub, \"lib\") for s in site.getsitepackages() for sub in (\"cublas\", \"cudnn\") if os.path.exists(os.path.join(s, \"nvidia\", sub, \"lib\"))]; open(\"/etc/ld.so.conf.d/nvidia.conf\", \"w\").write(\"\\n\".join(pths) + \"\\n\"); os.system(\"ldconfig\")'",
             "python3 -c 'from faster_whisper import WhisperModel; WhisperModel(\"large-v3-turbo\", device=\"cpu\", compute_type=\"int8\")'",
         )
