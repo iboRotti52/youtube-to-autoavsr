@@ -141,9 +141,9 @@ def push(
         raise ValueError(f"statuses must be a subset of {VALID_STATUSES}")
 
     workspace = Path(workspace)
-    if not (workspace / "clips").exists():
+    if not any((workspace / name).exists() for name in ("clips", "manifests", "completions")):
         raise FileNotFoundError(
-            f"No clips found under {workspace/'clips'}. Run the pipeline first."
+            f"No pipeline outputs found under {workspace}. Run the pipeline first."
         )
 
     contributor = _slug(contributor) if contributor else _default_contributor(token)

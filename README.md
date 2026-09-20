@@ -37,9 +37,9 @@ Ekipteki iş bölümü mükerrer çalışmayı önlemek için **sabittir ve 3 pa
 
 | Ekip Üyesi | Sabit Shard | Modal GPU Komutu (Önerilen) | Kendi Bilgisayarında (Lokal) |
 | :--- | :---: | :--- | :--- |
-| **İbrahim Gözlükaya** | **Shard 0** | `ytavsr modal --shard 0` | `ytavsr --shard 0` |
-| **Damla Kemal** | **Shard 1** | `ytavsr modal --shard 1` | `ytavsr --shard 1` |
-| **İbrahim Billurcu** | **Shard 2** | `ytavsr modal --shard 2` | `ytavsr --shard 2` |
+| **İbrahim Gözlükaya** | **Shard 0** | `ytavsr modal --shard 0` | `ytavsr process-both-sources --shard 0` |
+| **Damla Kemal** | **Shard 1** | `ytavsr modal --shard 1` | `ytavsr process-both-sources --shard 1` |
+| **İbrahim Billurcu** | **Shard 2** | `ytavsr modal --shard 2` | `ytavsr process-both-sources --shard 2` |
 
 #### Yöntem A: Modal Bulut GPU ile İşleme (Önerilen)
 RetinaFace ve 1080p kesimleri Modal bulut GPU üzerinde çalışır. Üretilen klipler doğrudan Hugging Face ortak depomuza (`avsr-tr-ekip/avsr-tr-dataset`) yüklenir; yerel diskiniz ve internet kotanız harcanmaz.
@@ -51,13 +51,13 @@ ytavsr modal --shard 0    # (Shard numaranızı yazın: 0, 1 veya 2)
 Modal kullanmadan kendi bilgisayarınızda işlemek isterseniz:
 ```bash
 # 1. Kendi shard'ınızı yerelde işleyin:
-ytavsr --shard 0          # (Shard numaranızı yazın: 0, 1 veya 2)
+ytavsr process-both-sources --shard 0  # (Shard numaranızı yazın: 0, 1 veya 2)
 
 # 2. Üretilen kabul edilmiş klipleri Hugging Face deposuna yükleyin:
 ytavsr push-data
 ```
 
-> 💡 **Nasıl çalışır?** Listeye yeni videolar eklendikçe sistem daha önce işlenmiş videoları otomatik atlar ve kalan yeni videoları bu 3 shard'a paylaştırır. Her ekip üyesi sadece kendi shard komutunu çalıştırır.
+> 💡 **Nasıl çalışır?** Modal ve lokal akışta sıra aynıdır: önce iki kaynak listesinin tamamı deduplicate edilir, sonra tam liste shard'lara partition edilir, en son yalnızca atanmış shard içindeki processed kaynaklar atlanır. Böylece yeni videolar eklense veya başka shard tamamlanmış olsa da sahiplik kaymaz.
 
 ---
 
@@ -135,13 +135,15 @@ Ortak repoya veri gönderebilmek için Write yetkili Hugging Face token'ı gerek
 İşlenen klipler ortak Hugging Face deposunda (`avsr-tr-ekip/avsr-tr-dataset`) şu formatta saklanır:
 
 ```text
-data/<uye_adi>/<video_id>/<segment_id>/
+data/<contributor>/clips/<item>/<segment>/
 ├── mouth.mp4          # Auto-AVSR için 96×96 ağız ROI videosu (25 fps)
 ├── transcript.txt     # Klibin konuşma metni (Whisper large-v3-turbo)
 ├── metadata.json      # Dudak senkronizasyonu ve kalite metrikleri
-├── audio.wav          # Klip sesi (16 kHz mono)
-└── source.mp4         # Ham video kesiti (debug amaçlı)
+├── audio.wav          # İsteğe bağlı; varsayılan HF upload'ında yoktur
+└── source.mp4         # İsteğe bağlı debug dosyası; varsayılan HF upload'ında yoktur
 ```
+
+Varsayılan `push-data` upload'ı `data/<contributor>/clips/<item>/<segment>` altında yalnızca eğitim için gereken dosyaları gönderir; `source.mp4` ve `audio.wav` varsayılan olarak gönderilmez.
 
 ---
 

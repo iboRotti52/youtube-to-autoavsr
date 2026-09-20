@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
@@ -45,6 +46,39 @@ class Pipeline:
         self.profile = get_profile(profile)
         self.shard = shard
         self.state = StateDB(self.workspace / "state.sqlite3")
+        self._completion_path = self.workspace / "completions" / f"local_{time.time_ns()}.jsonl"
+
+    def _record_completion(self, url: str, items: list[dict], *, playlist: bool) -> None:
+        item_ids = [str(item.get("id", "")) for item in items if item.get("id")]
+        if not item_ids:
+            return
+
+        counts = {"accepted": 0, "review": 0, "rejected": 0}
+        for item_id in item_ids:
+            for meta_path in sorted((self.workspace / "clips" / item_id).glob("*/metadata.json")):
+                try:
+                    status = read_json(meta_path).get("quality_status")
+                except Exception:
+                    continue
+                if status in counts:
+                    counts[status] += 1
+
+        entry = {
+            "run_id": self._completion_path.stem,
+            "url": url,
+            "video_id": None if playlist else item_ids[0],
+            "item_id": None if playlist else item_ids[0],
+            "item_ids": item_ids,
+            "is_playlist": playlist,
+            "accepted_clips": counts["accepted"],
+            "review_clips": counts["review"],
+            "rejected_clips": counts["rejected"],
+            "status": "completed",
+            "timestamp": time.time(),
+        }
+        self._completion_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._completion_path.open("a", encoding="utf-8") as ledger:
+            ledger.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     def process_url(self, url: str, *, playlist: bool = False):
         self.last_download_all_processed = False
@@ -76,9 +110,10 @@ class Pipeline:
                 [item["metadata"] for item in items if "metadata" in item],
                 self.cfg.sources.processed_file,
             )
+            self._record_completion(url, items, playlist=playlist)
         return items
 
-    def process_sources_file(self, path: Path):
+    def process_sources_file(self, path: Path, *, already_partitioned: bool = False):
         if not path.exists():
             raise FileNotFoundError(f"Sources file not found: {path}")
 
@@ -121,7 +156,7 @@ class Pipeline:
             deduped_sources.append((mode, url))
         sources = deduped_sources
 
-        if self.shard:
+        if self.shard and not already_partitioned:
             from .sources import get_shard_owner
 
             original_count = len(sources)
@@ -168,6 +203,7 @@ class Pipeline:
                         [item["metadata"] for item in items if "metadata" in item],
                         self.cfg.sources.processed_file,
                     )
+                    self._record_completion(url, items, playlist=playlist)
             except Exception as exc:
                 failures.append((url, str(exc)))
                 print(f"[ERROR] {url}: {exc}")
